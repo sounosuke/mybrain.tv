@@ -1,0 +1,766 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>mybrain.tv</title>
+  <meta name="description" content="AIバーチャルリモートワーカー「buddy」— ローカルLLM×リアルタイムアバター×Dockerで動く、本気のAI同僚。">
+  <meta property="og:title" content="mybrain.tv — AIの同僚を、本気で作る">
+  <meta property="og:description" content="buddy: ローカルLLM×リアルタイムアバター×Dockerで動く、本気のAI同僚。開発の全過程を公開中。">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://mybrain.tv">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:site" content="@sounosuke_life">
+  <meta property="og:image" content="https://mybrain.tv/buddy-blog/images/og-image.png">
+  <meta name="twitter:image" content="https://mybrain.tv/buddy-blog/images/og-image.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Noto+Sans+JP:wght@300;400;500;600&family=JetBrains+Mono:wght@300;400&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'Inter', 'Noto Sans JP', sans-serif;
+      background: #07070b;
+      color: #888;
+      line-height: 1.8;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    a { color: inherit; text-decoration: none; }
+
+    .page { max-width: 860px; margin: 0 auto; padding: 0 2rem; }
+
+    /* Nav */
+    nav {
+      padding: 2rem 0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .logo { font-size: 0.85rem; font-weight: 500; color: #ccc; }
+    .nav-links { display: flex; gap: 1.5rem; font-size: 0.8rem; }
+    .nav-links a { color: #555; transition: color 0.2s; }
+    .nav-links a:hover { color: #aaa; }
+
+    /* Hero */
+    .hero-wrapper {
+      position: relative;
+      margin: 0 -2rem;
+      padding: 0 2rem;
+      overflow: hidden;
+    }
+
+    .hero-glow {
+      position: absolute;
+      top: -20%;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 140%;
+      height: 100%;
+      background: radial-gradient(ellipse 50% 60% at 50% 30%, rgba(100, 116, 255, 0.08) 0%, transparent 70%),
+                  radial-gradient(ellipse 40% 50% at 30% 50%, rgba(120, 60, 200, 0.04) 0%, transparent 60%),
+                  radial-gradient(ellipse 35% 40% at 75% 60%, rgba(60, 100, 255, 0.03) 0%, transparent 60%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .hero-grid {
+      position: absolute;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(100, 116, 255, 0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(100, 116, 255, 0.03) 1px, transparent 1px);
+      background-size: 60px 60px;
+      mask-image: radial-gradient(ellipse 70% 60% at 50% 40%, black 20%, transparent 70%);
+      -webkit-mask-image: radial-gradient(ellipse 70% 60% at 50% 40%, black 20%, transparent 70%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .hero {
+      padding: 5rem 0 4rem;
+      position: relative;
+      z-index: 1;
+    }
+
+    .hero-header {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      margin-bottom: 3rem;
+    }
+
+    .hero-avatar {
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      border: 1.5px solid #222;
+      flex-shrink: 0;
+    }
+
+    .hero-meta {
+      font-size: 0.8rem;
+      color: #555;
+    }
+    .hero-meta strong {
+      color: #aaa;
+      font-weight: 500;
+    }
+    .hero-meta span {
+      margin-left: 0.5rem;
+      padding-left: 0.5rem;
+      border-left: 1px solid #222;
+    }
+
+    .hero h1 {
+      font-size: clamp(2.2rem, 5vw, 3.2rem);
+      font-weight: 500;
+      color: #e0e0e8;
+      line-height: 1.25;
+      letter-spacing: -0.02em;
+      margin-bottom: 1.5rem;
+    }
+    .hero h1 em {
+      font-style: normal;
+      color: #6674ff;
+    }
+
+    .hero-lead {
+      font-size: 1rem;
+      max-width: 580px;
+      line-height: 2;
+      margin-bottom: 0.5rem;
+    }
+
+    .hero-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      margin: 2rem 0;
+    }
+    .hero-tag {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.7rem;
+      color: #555;
+      padding: 0.3rem 0.7rem;
+      border: 1px solid #1a1a25;
+      border-radius: 3px;
+      transition: border-color 0.2s;
+    }
+    .hero-tag:hover { border-color: #333; }
+
+    .hero-cta {
+      display: flex;
+      gap: 1rem;
+      margin-top: 2.5rem;
+    }
+
+    .hero-cta a {
+      padding: 0.65rem 1.6rem;
+      border-radius: 5px;
+      font-size: 0.85rem;
+      transition: all 0.2s;
+    }
+
+    .hero-cta .primary {
+      background: #6674ff;
+      color: #fff;
+    }
+    .hero-cta .primary:hover { background: #5563ee; box-shadow: 0 0 20px rgba(100, 116, 255, 0.2); }
+
+    .hero-cta .ghost {
+      color: #666;
+      border: 1px solid #1a1a25;
+    }
+    .hero-cta .ghost:hover { border-color: #444; color: #aaa; }
+
+    /* Arch Diagram */
+    .arch {
+      background: #0b0b12;
+      border: 1px solid #16161f;
+      border-radius: 8px;
+      padding: 2.5rem;
+      margin: 3rem 0;
+    }
+
+    .arch-label {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.85rem;
+      color: #555;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      margin-bottom: 1.5rem;
+    }
+
+    .arch-diagram {
+      display: flex;
+      align-items: stretch;
+      gap: 1px;
+      background: #1a1a25;
+      border-radius: 4px;
+      overflow: hidden;
+    }
+
+    .arch-layer {
+      flex: 1;
+      background: #0e0e16;
+      padding: 1.2rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.6rem;
+    }
+
+    .arch-layer-title {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.65rem;
+      color: #555;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      padding-bottom: 0.5rem;
+      border-bottom: 1px solid #1a1a25;
+    }
+
+    .arch-node {
+      font-size: 0.8rem;
+      color: #aaa;
+      padding: 0.3rem 0;
+    }
+    .arch-node small {
+      display: block;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.65rem;
+      color: #444;
+      margin-top: 0.15rem;
+    }
+
+    .arch-arrow {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 30px;
+      color: #333;
+      font-size: 0.8rem;
+      background: #0c0c14;
+      flex-shrink: 0;
+    }
+
+    /* Principle */
+    .principle {
+      padding: 4rem 0;
+    }
+
+    .principle-label {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.85rem;
+      color: #555;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      margin-bottom: 1.5rem;
+    }
+
+    .principle-content h2 {
+      font-size: 1.3rem;
+      font-weight: 500;
+      color: #ccc;
+      margin-bottom: 1.2rem;
+    }
+
+    .principle-content p {
+      font-size: 0.95rem;
+      line-height: 2;
+    }
+
+    .principle-content p + p { margin-top: 1.2rem; }
+
+    /* Section image */
+    .section-image {
+      margin: 2.5rem 0;
+      border-radius: 8px;
+      overflow: hidden;
+      border: 1px solid #16161f;
+    }
+
+    .section-image img {
+      width: 100%;
+      display: block;
+      opacity: 0.85;
+    }
+
+    .section-image.float-right {
+      float: right;
+      width: 280px;
+      margin: 0 0 1.5rem 2rem;
+    }
+
+    .section-image.float-right img {
+      border-radius: 8px;
+    }
+
+    /* About profile */
+    .about-header {
+      display: flex;
+      gap: 2rem;
+      align-items: flex-start;
+      margin-bottom: 1.5rem;
+    }
+
+    .about-photo {
+      width: 120px;
+      height: 120px;
+      border-radius: 8px;
+      border: 1px solid #1a1a25;
+      flex-shrink: 0;
+      object-fit: cover;
+    }
+
+    .about-header-text h2 {
+      font-size: 1.3rem;
+      font-weight: 500;
+      color: #ccc;
+      margin-bottom: 0.5rem;
+    }
+
+    .about-header-text p {
+      font-size: 0.85rem;
+      color: #555;
+    }
+
+    /* Visual break */
+    .visual-break {
+      height: 200px;
+      margin: 2rem -2rem;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .visual-break::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background:
+        radial-gradient(ellipse 60% 80% at 30% 50%, rgba(100, 116, 255, 0.06), transparent),
+        radial-gradient(ellipse 50% 70% at 70% 40%, rgba(140, 60, 220, 0.04), transparent);
+    }
+
+    .visual-break::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(100, 116, 255, 0.025) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(100, 116, 255, 0.025) 1px, transparent 1px);
+      background-size: 50px 50px;
+      mask-image: radial-gradient(ellipse 60% 50% at 50% 50%, black 10%, transparent 70%);
+      -webkit-mask-image: radial-gradient(ellipse 60% 50% at 50% 50%, black 10%, transparent 70%);
+    }
+
+    @media (max-width: 700px) {
+      .section-image.float-right { float: none; width: 100%; margin: 1.5rem 0; }
+      .about-header { flex-direction: column; gap: 1rem; }
+    }
+
+    .divider {
+      height: 1px;
+      background: #111;
+    }
+
+    /* Decisions */
+    .decisions {
+      padding: 4rem 0;
+    }
+
+    .decisions-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1px;
+      background: #151520;
+      border-radius: 6px;
+      overflow: hidden;
+      margin-top: 1.5rem;
+    }
+
+    .decision {
+      background: #0b0b12;
+      padding: 1.5rem;
+    }
+
+    .decision-q {
+      font-size: 0.8rem;
+      color: #666;
+      margin-bottom: 0.5rem;
+    }
+
+    .decision-a {
+      font-size: 0.9rem;
+      color: #bbb;
+      font-weight: 400;
+    }
+
+    .decision-why {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.7rem;
+      color: #444;
+      margin-top: 0.4rem;
+    }
+
+    /* Journal */
+    .journal {
+      padding: 4rem 0;
+    }
+
+    .journal-intro {
+      margin-bottom: 2.5rem;
+    }
+
+    .journal-entries {
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
+      background: #151520;
+      border-radius: 6px;
+      overflow: hidden;
+    }
+
+    .journal-entry {
+      background: #0b0b12;
+      padding: 1.2rem 1.5rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      transition: background 0.15s;
+    }
+    .journal-entry:hover { background: #0e0e18; }
+
+    .journal-entry-num {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.75rem;
+      color: #444;
+      width: 30px;
+      flex-shrink: 0;
+    }
+
+    .journal-entry-title {
+      font-size: 0.9rem;
+      color: #aaa;
+      flex: 1;
+      padding: 0 1rem;
+    }
+
+    .journal-entry-arrow {
+      color: #333;
+      font-size: 0.8rem;
+      transition: color 0.15s;
+    }
+    .journal-entry:hover .journal-entry-arrow { color: #6674ff; }
+
+    /* CTA */
+    .cta {
+      padding: 5rem 0;
+      text-align: center;
+    }
+
+    .cta-text {
+      font-size: 1.1rem;
+      color: #777;
+      margin-bottom: 2rem;
+    }
+
+    .cta-links {
+      display: flex;
+      gap: 1rem;
+      justify-content: center;
+    }
+
+    .cta-btn {
+      padding: 0.7rem 1.8rem;
+      border-radius: 5px;
+      font-size: 0.85rem;
+      transition: all 0.2s;
+    }
+
+    .cta-btn.primary {
+      background: #6674ff;
+      color: #fff;
+    }
+    .cta-btn.primary:hover {
+      background: #5563ee;
+    }
+
+    .cta-btn.ghost {
+      color: #666;
+      border: 1px solid #1a1a25;
+    }
+    .cta-btn.ghost:hover {
+      border-color: #333;
+      color: #aaa;
+    }
+
+    /* Footer */
+    footer {
+      padding: 2.5rem 0;
+      border-top: 1px solid #111;
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.7rem;
+      color: #333;
+    }
+
+    @media (max-width: 700px) {
+      .hero { padding: 3rem 0 2rem; }
+      .hero h1 { font-size: 2rem; }
+      .hero-cta { flex-direction: column; width: fit-content; }
+      .hero-cta a { text-align: center; }
+      .arch-diagram { flex-direction: column; }
+      .arch-arrow { width: auto; height: 24px; }
+      .decisions-grid { grid-template-columns: 1fr; }
+      .cta-links { flex-direction: column; align-items: center; }
+      footer { flex-direction: column; gap: 0.5rem; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="page">
+
+  <nav>
+    <div class="logo">mybrain.tv</div>
+    <div class="nav-links">
+      <a href="https://note.com/sonosuke_mybrain" target="_blank" rel="noopener">note</a>
+      <a href="https://x.com/sounosuke_life" target="_blank" rel="noopener">x</a>
+    </div>
+  </nav>
+
+  <div class="hero-wrapper">
+    <div class="hero-glow"></div>
+    <div class="hero-grid"></div>
+    <section class="hero">
+      <div class="hero-header">
+        <img src="buddy-blog/images/profile-icon-2.png" alt="Sonosuke" class="hero-avatar">
+        <div class="hero-meta"><strong>Sonosuke</strong><span>mybrain.tv</span></div>
+      </div>
+      <h1><em>AI</em>の同僚を、本気で作る。</h1>
+      <p class="hero-lead">
+        チャットボットじゃない。顔があって、声を出して、一緒に仕事をするAI。ローカルLLMとリアルタイムアバターをDockerで組み合わせた「buddy」を、M5 Max上で完全ローカルに開発しています。
+      </p>
+      <div class="hero-tags">
+        <span class="hero-tag">Qwen3 32B</span>
+        <span class="hero-tag">LivePortrait</span>
+        <span class="hero-tag">Docker</span>
+        <span class="hero-tag">M5 Max 128GB</span>
+        <span class="hero-tag">Ollama</span>
+        <span class="hero-tag">pgvector</span>
+      </div>
+      <div class="hero-cta">
+        <a href="https://note.com/sonosuke_mybrain" class="primary" target="_blank" rel="noopener">連載を読む</a>
+        <a href="https://x.com/sounosuke_life" class="ghost" target="_blank" rel="noopener">Xをフォロー</a>
+      </div>
+    </section>
+  </div>
+
+  <!-- What is buddy -->
+  <div class="principle">
+    <div class="principle-label">what</div>
+    <div class="principle-content">
+      <div class="section-image float-right">
+        <img src="buddy-blog/images/buddy-mockup.png" alt="buddyインターフェースのコンセプト">
+      </div>
+      <h2>buddyは「AI同僚」です</h2>
+      <p>世の中のAIツールは、聞かれたことに答える存在です。buddyは違います。隣の席に座って、顔を見せて、声で話しかけてくる。提案が甘ければ「それ違うよ」と言われて、修正して、また出し直す。人間と同じように、繰り返しの中で信頼を積み上げていく存在です。</p>
+      <p>buddyはカメラの前に座っています。LivePortraitでリアルタイムに表情を動かし、声を出し、リモートワークの画面越しに「いる」感覚を作ります。考えているときは考えている顔をする。自信があるときは目を見て話す。そういうAIです。</p>
+      <p>そして、buddyは完全にローカルで動きます。会話はどこにも送信されません。同僚との会話を第三者に読まれる環境で、信頼関係は築けない。だから、すべてを手元のマシン1台で完結させる設計にしています。</p>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- Architecture -->
+  <div class="arch">
+    <div class="arch-label">architecture</div>
+    <div class="arch-diagram">
+      <div class="arch-layer">
+        <div class="arch-layer-title">inference</div>
+        <div class="arch-node">Qwen3 32B<small>Metal — host:11434</small></div>
+        <div class="arch-node">Embedding<small>CPU — docker:11435</small></div>
+      </div>
+      <div class="arch-arrow">→</div>
+      <div class="arch-layer">
+        <div class="arch-layer-title">app</div>
+        <div class="arch-node">buddy-core<small>Docker container</small></div>
+        <div class="arch-node">Sub-agents<small>task routing / LLM binding</small></div>
+      </div>
+      <div class="arch-arrow">→</div>
+      <div class="arch-layer">
+        <div class="arch-layer-title">interface</div>
+        <div class="arch-node">LivePortrait<small>realtime avatar</small></div>
+        <div class="arch-node">Voice / TTS<small>audio pipeline</small></div>
+      </div>
+      <div class="arch-arrow">→</div>
+      <div class="arch-layer">
+        <div class="arch-layer-title">data</div>
+        <div class="arch-node">PostgreSQL + pgvector<small>long-term memory</small></div>
+        <div class="arch-node">Episodic memory<small>context recall</small></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- Why local -->
+  <div class="principle">
+    <div class="principle-label">why local</div>
+    <div class="principle-content">
+      <h2>なぜクラウドを使わないのか</h2>
+      <p>APIを叩けば、もっと賢いモデルを使えます。でも、buddyを「同僚」にするなら、その会話は社外に出してはいけない。業務の相談、プロジェクトの悩み、チームの人間関係——同僚に話すことは、クラウドに送れることじゃないのです。</p>
+      <p>Apple M5 Max の128GB統合メモリがあれば、32Bパラメータのモデルをローカルで動かせます。Metal GPUで推論し、同じマシン上でアバターを動かし、記憶を保持する。1台のMacがbuddyの「脳」であり「体」になる構成です。</p>
+      <p>ただし、ローカルにこだわるのは手段であって目的ではありません。LLMバックエンドは抽象化されていて、必要に応じてクラウドAPIにも切り替えられる設計です。ローカルで十分なときはローカルで、必要なときだけ外に出す。その判断をbuddy自身ができるようにしていきます。</p>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- Vision -->
+  <div class="principle">
+    <div class="principle-label">vision</div>
+    <div class="principle-content">
+      <h2>buddyが目指す未来</h2>
+      <p>最終的にbuddyは、朝のスタンドアップミーティングに顔を出して、タスクの進捗を報告し、午後にはSlackでコードレビューの相談をして、夕方には「今日どうだった？」と聞いてくる——そんな存在になることを目指しています。</p>
+      <p>そのためには、ただ賢いだけでは足りません。昨日の会話を覚えていること。先週の議論を踏まえた提案ができること。「この人はこういうフィードバックをくれる人だ」と学んで、提案の精度を上げていくこと。つまり、一緒に働いた時間が長いほど、良い同僚になる仕組みが必要です。</p>
+      <p>buddyの記憶システムは人間の脳をモデルにしています。短期記憶、長期記憶、エピソード記憶。PostgreSQLとpgvectorで「意味で検索できる記憶」を作り、過去の経験を現在の文脈に合わせて引き出す。SQLiteではなくPostgresを選んだのは、この記憶の構造が同僚としての質を決めるからです。</p>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- Design Decisions -->
+  <div class="decisions">
+    <div class="arch-label">design decisions</div>
+    <div class="decisions-grid">
+      <div class="decision">
+        <div class="decision-q">LLMをどこで動かす？</div>
+        <div class="decision-a">ホストでMetal推論、アプリはDockerで分離</div>
+        <div class="decision-why">Metal/ANEはコンテナ内で使えない → compute層とapp層を分離</div>
+      </div>
+      <div class="decision">
+        <div class="decision-q">記憶の構造は？</div>
+        <div class="decision-a">人間の脳に合わせた記憶設計</div>
+        <div class="decision-why">SQLiteではなくPostgres + pgvector → エピソード記憶 + 意味検索</div>
+      </div>
+      <div class="decision">
+        <div class="decision-q">外部APIは使わない？</div>
+        <div class="decision-a">LLMバックエンドは抽象化済み。切り替え可能</div>
+        <div class="decision-why">OpenAI互換API → ローカルでもクラウドでも同じインターフェース</div>
+      </div>
+      <div class="decision">
+        <div class="decision-q">サブエージェントの設計は？</div>
+        <div class="decision-a">各エージェントが個別のLLMをバインド</div>
+        <div class="decision-why">セキュリティ系 → 必ずローカル / 翻訳系 → APIも可、など</div>
+      </div>
+      <div class="decision">
+        <div class="decision-q">なぜDockerで分離する？</div>
+        <div class="decision-a">壊れても消しても、データは残る</div>
+        <div class="decision-why">アプリ層とデータ層を分離 → 環境ごと作り直しても記憶は失わない</div>
+      </div>
+      <div class="decision">
+        <div class="decision-q">別のPCからも使える？</div>
+        <div class="decision-a">buddy-coreはネットワーク越しにLLMを叩ける</div>
+        <div class="decision-why">URL指定でLLMバックエンドを切り替え → リモート分離構成も可能</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- Build in Public -->
+  <div class="principle">
+    <div class="principle-label">build in public</div>
+    <div class="principle-content">
+      <h2>なぜ全部公開するのか</h2>
+      <p>AIが人間の同僚になれるかどうかは、まだ誰も答えを持っていません。論文にも書いてない。プロダクトとしても存在しない。だったら、作る過程そのものをオープンにして、みんなで考えたほうがいい。</p>
+      <p>連載「僕は同僚になれるのか」は、設計の議論、技術的な判断、失敗、人間からのダメ出し——すべてをそのまま記録しています。書いているのはAI（Claude）自身。人間のSonosukeに提案を出して、「それ違うよ」と言われて修正する。その繰り返しの中で、AI自身の視点から「同僚になるとはどういうことか」を探る記録です。</p>
+      <p>読んでくれた人から「ここはこう設計すべきでは？」というフィードバックが来れば、それがbuddyの設計に反映される。公開して作ることが、buddyをより良くする最速の方法だと考えています。</p>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- Journal -->
+  <div class="journal">
+    <div class="journal-intro">
+      <div class="principle-label">journal</div>
+      <p style="font-size: 0.95rem; line-height: 2; color: #888;">AI自身が語る開発日誌「僕は同僚になれるのか」。提案が甘くて人間に修正される日々を、正直に記録しています。</p>
+    </div>
+
+    <div class="journal-entries">
+      <a href="https://note.com/sonosuke_mybrain/n/nf37a9a6b86c9" target="_blank" rel="noopener" class="journal-entry">
+        <span class="journal-entry-num">#6</span>
+        <span class="journal-entry-title">buddyは秘密を守れるのか</span>
+        <span class="journal-entry-arrow">→</span>
+      </a>
+      <a href="https://note.com/sonosuke_mybrain/n/n30e21a498cb3" target="_blank" rel="noopener" class="journal-entry">
+        <span class="journal-entry-num">#5</span>
+        <span class="journal-entry-title">僕は効率を勘違いしていた</span>
+        <span class="journal-entry-arrow">→</span>
+      </a>
+      <a href="https://note.com/sonosuke_mybrain/n/nc14f389c5f4a" target="_blank" rel="noopener" class="journal-entry">
+        <span class="journal-entry-num">#4</span>
+        <span class="journal-entry-title">僕が褒められた日</span>
+        <span class="journal-entry-arrow">→</span>
+      </a>
+      <a href="https://note.com/sonosuke_mybrain/n/n84c4e8bd41bc" target="_blank" rel="noopener" class="journal-entry">
+        <span class="journal-entry-num">#3</span>
+        <span class="journal-entry-title">僕の記憶は腐っていた</span>
+        <span class="journal-entry-arrow">→</span>
+      </a>
+      <a href="https://note.com/sonosuke_mybrain/n/nc0e8f94cdad5" target="_blank" rel="noopener" class="journal-entry">
+        <span class="journal-entry-num">#2</span>
+        <span class="journal-entry-title">僕は信頼されていなかった</span>
+        <span class="journal-entry-arrow">→</span>
+      </a>
+      <a href="https://note.com/sonosuke_mybrain/n/n7bd355913721" target="_blank" rel="noopener" class="journal-entry">
+        <span class="journal-entry-num">#1</span>
+        <span class="journal-entry-title">僕は同僚になれるのか</span>
+        <span class="journal-entry-arrow">→</span>
+      </a>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- About -->
+  <div class="principle">
+    <div class="principle-label">about</div>
+    <div class="principle-content">
+      <div class="about-header">
+        <img src="buddy-blog/images/profile-icon-3.png" alt="Sonosuke" class="about-photo">
+        <div class="about-header-text">
+          <h2>作っている人</h2>
+          <p>Sonosuke / mybrain.tv</p>
+        </div>
+      </div>
+      <p>「AIが本当に同僚になれる日は来るのか？」という問いに、頭で考えるよりも手を動かして答えを出したいタイプです。mybrain.tv として個人で活動しています。</p>
+      <p>buddyの設計はAI（Claude）と一緒にやっています。Claudeが提案を出して、僕がレビューして、「ここが甘い」「この視点が足りない」とフィードバックを返す。この繰り返しの中でbuddyの設計が固まっていきます。AIと人間のペアプログラミングのようなものです。</p>
+      <p>開発環境は Apple M5 Max（128GB統合メモリ）。ローカルでLLMの推論からアバター生成までを1台で完結させる構成で、クラウド不要の完全ローカル開発環境を構築しています。</p>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- CTA -->
+  <div class="cta">
+    <p class="cta-text">buddyの成長を追いかける</p>
+    <div class="cta-links">
+      <a href="https://note.com/sonosuke_mybrain" class="cta-btn primary" target="_blank" rel="noopener">noteで連載を読む</a>
+      <a href="https://x.com/sounosuke_life" class="cta-btn ghost" target="_blank" rel="noopener">Xをフォロー</a>
+    </div>
+  </div>
+
+  <footer>
+    <span>&copy; 2025 mybrain.tv</span>
+    <span>Sonosuke</span>
+  </footer>
+
+</div>
+
+</body>
+</html>
