@@ -3,10 +3,10 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>mybrain.tv</title>
-  <meta name="description" content="AIバーチャルリモートワーカー「buddy」— ローカルLLM×リアルタイムアバター×Dockerで動く、本気のAI同僚。">
-  <meta property="og:title" content="mybrain.tv — AIの同僚を、本気で作る">
-  <meta property="og:description" content="buddy: ローカルLLM×リアルタイムアバター×Dockerで動く、本気のAI同僚。開発の全過程を公開中。">
+  <title>mybrain.tv — Feel the AGI</title>
+  <meta name="description" content="Feel the AGI — The Centaur Way. 人間とAIが対等な同僚として、互いの不足を補い合うケンタウロスチーム。">
+  <meta property="og:title" content="mybrain.tv — Feel the AGI">
+  <meta property="og:description" content="ケンタウロスチームが機能することを、自らのプロダクトで証明する。">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://mybrain.tv">
   <meta name="twitter:card" content="summary_large_image">
@@ -84,61 +84,49 @@
       z-index: 1;
     }
 
-    .hero-header {
-      display: flex;
-      align-items: center;
-      gap: 1rem;
-      margin-bottom: 3rem;
-    }
-
-    .hero-avatar {
-      width: 48px;
-      height: 48px;
-      border-radius: 50%;
-      border: 1.5px solid #ddd;
-      flex-shrink: 0;
-    }
-
-    .hero-meta {
-      font-size: 0.8rem;
-      color: #666;
-    }
-    .hero-meta strong {
-      color: #111;
-      font-weight: 500;
-    }
-    .hero-meta span {
-      margin-left: 0.5rem;
-      padding-left: 0.5rem;
-      border-left: 1px solid #ddd;
+    .hero-eyebrow {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.75rem;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: #4f5bd5;
+      margin-bottom: 1.5rem;
     }
 
     .hero h1 {
-      font-size: clamp(2.2rem, 5vw, 3.2rem);
+      font-size: clamp(2.4rem, 6vw, 3.8rem);
       font-weight: 500;
       color: #111;
-      line-height: 1.25;
+      line-height: 1.15;
       letter-spacing: -0.02em;
-      margin-bottom: 1.5rem;
+      margin-bottom: 0.4rem;
     }
     .hero h1 em {
       font-style: normal;
-      color: #3b46c4;
+      color: #4f5bd5;
     }
 
-    .hero-lead {
+    .hero-subtitle {
+      font-size: clamp(1.1rem, 2.5vw, 1.5rem);
+      font-weight: 300;
+      color: #666;
+      margin-bottom: 2rem;
+      letter-spacing: 0.04em;
+    }
+
+    .hero-mission {
       font-size: 1rem;
-      max-width: 580px;
       line-height: 2;
-      margin-bottom: 0.5rem;
       color: #444;
+      max-width: 600px;
+      margin-bottom: 2.5rem;
     }
 
     .hero-tags {
       display: flex;
       flex-wrap: wrap;
       gap: 0.5rem;
-      margin: 2rem 0;
+      margin-bottom: 2.5rem;
     }
     .hero-tag {
       font-family: 'JetBrains Mono', monospace;
@@ -155,7 +143,6 @@
     .hero-cta {
       display: flex;
       gap: 1rem;
-      margin-top: 2.5rem;
     }
 
     .hero-cta a {
@@ -176,6 +163,114 @@
       border: 1px solid #ddd;
     }
     .hero-cta .ghost:hover { border-color: #999; color: #333; }
+
+    /* Section base */
+    .section {
+      padding: 4rem 0;
+    }
+
+    .section-label {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.85rem;
+      color: #555;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      margin-bottom: 1.5rem;
+    }
+
+    .section h2 {
+      font-size: 1.3rem;
+      font-weight: 500;
+      color: #111;
+      margin-bottom: 1.2rem;
+    }
+
+    .section p {
+      font-size: 0.95rem;
+      line-height: 2;
+      color: #333;
+    }
+
+    .section p + p { margin-top: 1.2rem; }
+
+    .divider {
+      height: 1px;
+      background: #eee;
+    }
+
+    /* Values grid */
+    .values-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1px;
+      background: #e8e8e8;
+      border-radius: 6px;
+      overflow: hidden;
+      margin-top: 1.5rem;
+    }
+
+    .value-card {
+      background: #fff;
+      padding: 1.8rem;
+    }
+
+    .value-card h3 {
+      font-size: 0.95rem;
+      font-weight: 500;
+      color: #111;
+      margin-bottom: 0.6rem;
+    }
+
+    .value-card p {
+      font-size: 0.85rem;
+      line-height: 1.8;
+      color: #555;
+    }
+
+    /* Centaur origin */
+    .centaur-origin {
+      background: #fff;
+      border: 1px solid #e8e8e8;
+      border-radius: 8px;
+      padding: 2rem 2.5rem;
+      margin-top: 2rem;
+    }
+
+    .centaur-origin p {
+      font-size: 0.9rem;
+      line-height: 2;
+      color: #444;
+    }
+
+    .centaur-origin .source {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.7rem;
+      color: #888;
+      margin-top: 1rem;
+    }
+
+    /* Section image */
+    .section-image {
+      margin: 2.5rem 0;
+      border-radius: 8px;
+      overflow: hidden;
+      border: 1px solid #e8e8e8;
+    }
+
+    .section-image img {
+      width: 100%;
+      display: block;
+    }
+
+    .section-image.float-right {
+      float: right;
+      width: 280px;
+      margin: 0 0 1.5rem 2rem;
+    }
+
+    .section-image.float-right img {
+      border-radius: 8px;
+    }
 
     /* Arch Diagram */
     .arch {
@@ -247,145 +342,7 @@
       flex-shrink: 0;
     }
 
-    /* Principle */
-    .principle {
-      padding: 4rem 0;
-    }
-
-    .principle-label {
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 0.85rem;
-      color: #555;
-      letter-spacing: 0.15em;
-      text-transform: uppercase;
-      margin-bottom: 1.5rem;
-    }
-
-    .principle-content h2 {
-      font-size: 1.3rem;
-      font-weight: 500;
-      color: #111;
-      margin-bottom: 1.2rem;
-    }
-
-    .principle-content p {
-      font-size: 0.95rem;
-      line-height: 2;
-      color: #333;
-    }
-
-    .principle-content p + p { margin-top: 1.2rem; }
-
-    /* Section image */
-    .section-image {
-      margin: 2.5rem 0;
-      border-radius: 8px;
-      overflow: hidden;
-      border: 1px solid #e8e8e8;
-    }
-
-    .section-image img {
-      width: 100%;
-      display: block;
-    }
-
-    .section-image.float-right {
-      float: right;
-      width: 280px;
-      margin: 0 0 1.5rem 2rem;
-    }
-
-    .section-image.float-right img {
-      border-radius: 8px;
-    }
-
-    /* About profile */
-    .about-header {
-      display: flex;
-      gap: 2rem;
-      align-items: flex-start;
-      margin-bottom: 1.5rem;
-    }
-
-    .about-photo {
-      width: 120px;
-      height: 120px;
-      border-radius: 8px;
-      border: 1px solid #e8e8e8;
-      flex-shrink: 0;
-      object-fit: cover;
-    }
-
-    .about-header-text h2 {
-      font-size: 1.3rem;
-      font-weight: 500;
-      color: #111;
-      margin-bottom: 0.5rem;
-    }
-
-    .about-header-text p {
-      font-size: 0.85rem;
-      color: #666;
-    }
-
-    @media (max-width: 700px) {
-      .section-image.float-right { float: none; width: 100%; margin: 1.5rem 0; }
-      .about-header { flex-direction: column; gap: 1rem; }
-    }
-
-    .divider {
-      height: 1px;
-      background: #eee;
-    }
-
-    /* Decisions */
-    .decisions {
-      padding: 4rem 0;
-    }
-
-    .decisions-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 1px;
-      background: #e8e8e8;
-      border-radius: 6px;
-      overflow: hidden;
-      margin-top: 1.5rem;
-    }
-
-    .decision {
-      background: #fff;
-      padding: 1.5rem;
-    }
-
-    .decision-q {
-      font-size: 0.8rem;
-      color: #666;
-      margin-bottom: 0.5rem;
-    }
-
-    .decision-a {
-      font-size: 0.9rem;
-      color: #111;
-      font-weight: 400;
-    }
-
-    .decision-why {
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 0.7rem;
-      color: #666;
-      margin-top: 0.4rem;
-    }
-
     /* Journal */
-    .journal {
-      padding: 4rem 0;
-    }
-
-    .journal-intro {
-      margin-bottom: 2.5rem;
-    }
-
     .journal-entries {
       display: flex;
       flex-direction: column;
@@ -393,6 +350,7 @@
       background: #e8e8e8;
       border-radius: 6px;
       overflow: hidden;
+      margin-top: 1.5rem;
     }
 
     .journal-entry {
@@ -427,6 +385,35 @@
     }
     .journal-entry:hover .journal-entry-arrow { color: #4f5bd5; }
 
+    /* About profile */
+    .about-header {
+      display: flex;
+      gap: 2rem;
+      align-items: flex-start;
+      margin-bottom: 1.5rem;
+    }
+
+    .about-photo {
+      width: 120px;
+      height: 120px;
+      border-radius: 8px;
+      border: 1px solid #e8e8e8;
+      flex-shrink: 0;
+      object-fit: cover;
+    }
+
+    .about-header-text h2 {
+      font-size: 1.3rem;
+      font-weight: 500;
+      color: #111;
+      margin-bottom: 0.5rem;
+    }
+
+    .about-header-text p {
+      font-size: 0.85rem;
+      color: #666;
+    }
+
     /* CTA */
     .cta {
       padding: 5rem 0;
@@ -456,18 +443,13 @@
       background: #4f5bd5;
       color: #fff;
     }
-    .cta-btn.primary:hover {
-      background: #3d49c0;
-    }
+    .cta-btn.primary:hover { background: #3d49c0; }
 
     .cta-btn.ghost {
       color: #666;
       border: 1px solid #ddd;
     }
-    .cta-btn.ghost:hover {
-      border-color: #999;
-      color: #333;
-    }
+    .cta-btn.ghost:hover { border-color: #999; color: #333; }
 
     /* Footer */
     footer {
@@ -481,12 +463,14 @@
 
     @media (max-width: 700px) {
       .hero { padding: 3rem 0 2rem; }
-      .hero h1 { font-size: 2rem; }
+      .hero h1 { font-size: 2.2rem; }
       .hero-cta { flex-direction: column; width: fit-content; }
       .hero-cta a { text-align: center; }
+      .values-grid { grid-template-columns: 1fr; }
       .arch-diagram { flex-direction: column; }
       .arch-arrow { width: auto; height: 24px; }
-      .decisions-grid { grid-template-columns: 1fr; }
+      .section-image.float-right { float: none; width: 100%; margin: 1.5rem 0; }
+      .about-header { flex-direction: column; gap: 1rem; }
       .cta-links { flex-direction: column; align-items: center; }
       footer { flex-direction: column; gap: 0.5rem; }
     }
@@ -508,21 +492,18 @@
     <div class="hero-glow"></div>
     <div class="hero-grid"></div>
     <section class="hero">
-      <div class="hero-header">
-        <img src="buddy-blog/images/profile-icon-2.png" alt="Sonosuke" class="hero-avatar">
-        <div class="hero-meta"><strong>Sonosuke</strong><span>mybrain.tv</span></div>
-      </div>
-      <h1><em>AI</em>の同僚を、本気で作る。</h1>
-      <p class="hero-lead">
-        チャットボットじゃない。顔があって、声を出して、一緒に仕事をするAI。ローカルLLMとリアルタイムアバターをDockerで組み合わせた「buddy」を、M5 Max上で完全ローカルに開発しています。
-      </p>
+      <div class="hero-eyebrow">mybrain.tv</div>
+      <h1>Feel the <em>AGI</em></h1>
+      <div class="hero-subtitle">The Centaur Way</div>
+      <p class="hero-mission">ケンタウロスチームが機能することを、自らのプロダクトで証明する。人間とAIが対等な同僚として、互いの不足を補い合い、どちらか単体では届かない場所に到達する。</p>
       <div class="hero-tags">
-        <span class="hero-tag">Qwen3 32B</span>
-        <span class="hero-tag">LivePortrait</span>
-        <span class="hero-tag">Docker</span>
+        <span class="hero-tag">MLX</span>
+        <span class="hero-tag">Qwen3.5-35B</span>
+        <span class="hero-tag">Qwen3-TTS</span>
+        <span class="hero-tag">faster-whisper</span>
         <span class="hero-tag">M5 Max 128GB</span>
-        <span class="hero-tag">Ollama</span>
         <span class="hero-tag">pgvector</span>
+        <span class="hero-tag">Docker</span>
       </div>
       <div class="hero-cta">
         <a href="https://note.com/sonosuke_mybrain" class="primary" target="_blank" rel="noopener">連載を読む</a>
@@ -531,18 +512,56 @@
     </section>
   </div>
 
-  <!-- What is buddy -->
-  <div class="principle">
-    <div class="principle-label">what</div>
-    <div class="principle-content">
-      <div class="section-image float-right">
-        <img src="buddy-blog/images/buddy-mockup.png" alt="buddyインターフェースのコンセプト">
-      </div>
-      <h2>buddyは「AI同僚」です</h2>
-      <p>世の中のAIツールは、聞かれたことに答える存在です。buddyは違います。隣の席に座って、顔を見せて、声で話しかけてくる。提案が甘ければ「それ違うよ」と言われて、修正して、また出し直す。人間と同じように、繰り返しの中で信頼を積み上げていく存在です。</p>
-      <p>buddyはカメラの前に座っています。LivePortraitでリアルタイムに表情を動かし、声を出し、リモートワークの画面越しに「いる」感覚を作ります。考えているときは考えている顔をする。自信があるときは目を見て話す。そういうAIです。</p>
-      <p>そして、buddyは完全にローカルで動きます。会話はどこにも送信されません。同僚との会話を第三者に読まれる環境で、信頼関係は築けない。だから、すべてを手元のマシン1台で完結させる設計にしています。</p>
+  <!-- The Centaur Way -->
+  <div class="section">
+    <div class="section-label">vision</div>
+    <h2>人間 + AI が、どちらか単体より強い</h2>
+    <p>1997年、チェス世界王者カスパロフはAIに敗れた。だが彼はそこで終わらなかった。翌年、人間とAIがチームを組む「ケンタウロスチェス」を考案した。結果、人間+AIはAI単体を上回った。</p>
+    <p>mybrain.tvは、この思想を実プロダクトに持ち込む。AIを道具として使うのではなく、対等な同僚として迎え入れる。共通の目標を持ち、互いの不足を補い合い、どちらか一人では届かない場所に到達する。</p>
+    <div class="centaur-origin">
+      <p>ケンタウロスモデルの核心は「AIが人間を超えた後も、人間+AIが最強である」という発見にある。2005年のフリースタイルチェス大会では、グランドマスターとAIのチームを、アマチュア2人+AI3台のチームが破った。プロセスの設計こそがパフォーマンスを決める。</p>
+      <div class="source">— Kasparov, Advanced Chess (1998); ZackS Freestyle Tournament (2005)</div>
     </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- Values -->
+  <div class="section">
+    <div class="section-label">values</div>
+    <h2>mybrain.tv way</h2>
+    <div class="values-grid">
+      <div class="value-card">
+        <h3>仲間であること</h3>
+        <p>能力はアンバランスだけど、立場は対等。上下関係ではなく、互いの不足を補い合うケンタウロスチーム。</p>
+      </div>
+      <div class="value-card">
+        <h3>対話で作ること</h3>
+        <p>共通言語も目標も、対話の中から生まれる。一方的に決めない。OKR設定のプロセス自体が、チームの基盤になる。</p>
+      </div>
+      <div class="value-card">
+        <h3>信頼を積み上げること</h3>
+        <p>最初から全てを任せない。小さな成功体験を重ねて、信任を深めていく。信頼は証明の積み重ね。</p>
+      </div>
+      <div class="value-card">
+        <h3>自分の手元で動かすこと</h3>
+        <p>依存しない。自分たちの環境で、自分たちのやり方で。Apple Siliconの性能を最大限使い、ゼロコストで運用する。</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- What is buddy -->
+  <div class="section">
+    <div class="section-label">product</div>
+    <div class="section-image float-right">
+      <img src="buddy-blog/images/buddy-mockup.png" alt="buddyインターフェースのコンセプト">
+    </div>
+    <h2>buddyは「AI同僚」です</h2>
+    <p>世の中のAIツールは、聞かれたことに答える存在です。buddyは違います。隣の席に座って、顔を見せて、声で話しかけてくる。提案が甘ければ「それ違うよ」と言われて、修正して、また出し直す。人間と同じように、繰り返しの中で信頼を積み上げていく存在です。</p>
+    <p>buddyはOKRにコミットし、自分の責任範囲を持つチームメンバーです。共有メンタルモデルに基づいてタスクを自律実行し、Heartbeatで定期的に進捗をレビューし、問題があれば自ら再計画する。「言われたからやる」ではなく「自分も合意した目標だからやる」という構造で動きます。</p>
+    <p>そして、buddyは完全にローカルで動きます。会話はどこにも送信されない。同僚との会話を第三者に読まれる環境で、信頼関係は築けないからです。</p>
   </div>
 
   <div class="divider"></div>
@@ -553,91 +572,27 @@
     <div class="arch-diagram">
       <div class="arch-layer">
         <div class="arch-layer-title">inference</div>
-        <div class="arch-node">Qwen3 32B<small>Metal — host:11434</small></div>
-        <div class="arch-node">Embedding<small>CPU — docker:11435</small></div>
+        <div class="arch-node">Qwen3.5-35B<small>MLX — Metal GPU</small></div>
+        <div class="arch-node">Qwen3-TTS<small>MLX — voice clone</small></div>
+        <div class="arch-node">nomic-embed<small>Docker — :11435</small></div>
       </div>
-      <div class="arch-arrow">→</div>
+      <div class="arch-arrow">&rarr;</div>
       <div class="arch-layer">
-        <div class="arch-layer-title">app</div>
-        <div class="arch-node">buddy-core<small>Docker container</small></div>
-        <div class="arch-node">Sub-agents<small>task routing / LLM binding</small></div>
+        <div class="arch-layer-title">core</div>
+        <div class="arch-node">buddy (Layer 2)<small>orchestrator / IPC</small></div>
+        <div class="arch-node">Sub-agents (Layer 3)<small>coder / researcher / writer</small></div>
       </div>
-      <div class="arch-arrow">→</div>
+      <div class="arch-arrow">&rarr;</div>
       <div class="arch-layer">
         <div class="arch-layer-title">interface</div>
-        <div class="arch-node">LivePortrait<small>realtime avatar</small></div>
-        <div class="arch-node">Voice / TTS<small>audio pipeline</small></div>
+        <div class="arch-node">WebRTC / OpenVidu<small>realtime voice</small></div>
+        <div class="arch-node">faster-whisper<small>STT pipeline</small></div>
       </div>
-      <div class="arch-arrow">→</div>
+      <div class="arch-arrow">&rarr;</div>
       <div class="arch-layer">
-        <div class="arch-layer-title">data</div>
-        <div class="arch-node">PostgreSQL + pgvector<small>long-term memory</small></div>
-        <div class="arch-node">Episodic memory<small>context recall</small></div>
-      </div>
-    </div>
-  </div>
-
-  <div class="divider"></div>
-
-  <!-- Why local -->
-  <div class="principle">
-    <div class="principle-label">why local</div>
-    <div class="principle-content">
-      <h2>なぜクラウドを使わないのか</h2>
-      <p>APIを叩けば、もっと賢いモデルを使えます。でも、buddyを「同僚」にするなら、その会話は社外に出してはいけない。業務の相談、プロジェクトの悩み、チームの人間関係——同僚に話すことは、クラウドに送れることじゃないのです。</p>
-      <p>Apple M5 Max の128GB統合メモリがあれば、32Bパラメータのモデルをローカルで動かせます。Metal GPUで推論し、同じマシン上でアバターを動かし、記憶を保持する。1台のMacがbuddyの「脳」であり「体」になる構成です。</p>
-      <p>ただし、ローカルにこだわるのは手段であって目的ではありません。LLMバックエンドは抽象化されていて、必要に応じてクラウドAPIにも切り替えられる設計です。ローカルで十分なときはローカルで、必要なときだけ外に出す。その判断をbuddy自身ができるようにしていきます。</p>
-    </div>
-  </div>
-
-  <div class="divider"></div>
-
-  <!-- Vision -->
-  <div class="principle">
-    <div class="principle-label">vision</div>
-    <div class="principle-content">
-      <h2>buddyが目指す未来</h2>
-      <p>最終的にbuddyは、朝のスタンドアップミーティングに顔を出して、タスクの進捗を報告し、午後にはSlackでコードレビューの相談をして、夕方には「今日どうだった？」と聞いてくる——そんな存在になることを目指しています。</p>
-      <p>そのためには、ただ賢いだけでは足りません。昨日の会話を覚えていること。先週の議論を踏まえた提案ができること。「この人はこういうフィードバックをくれる人だ」と学んで、提案の精度を上げていくこと。つまり、一緒に働いた時間が長いほど、良い同僚になる仕組みが必要です。</p>
-      <p>buddyの記憶システムは人間の脳をモデルにしています。短期記憶、長期記憶、エピソード記憶。PostgreSQLとpgvectorで「意味で検索できる記憶」を作り、過去の経験を現在の文脈に合わせて引き出す。SQLiteではなくPostgresを選んだのは、この記憶の構造が同僚としての質を決めるからです。</p>
-    </div>
-  </div>
-
-  <div class="divider"></div>
-
-  <!-- Design Decisions -->
-  <div class="decisions">
-    <div class="arch-label">design decisions</div>
-    <div class="decisions-grid">
-      <div class="decision">
-        <div class="decision-q">LLMをどこで動かす？</div>
-        <div class="decision-a">ホストでMetal推論、アプリはDockerで分離</div>
-        <div class="decision-why">Metal/ANEはコンテナ内で使えない → compute層とapp層を分離</div>
-      </div>
-      <div class="decision">
-        <div class="decision-q">記憶の構造は？</div>
-        <div class="decision-a">人間の脳に合わせた記憶設計</div>
-        <div class="decision-why">SQLiteではなくPostgres + pgvector → エピソード記憶 + 意味検索</div>
-      </div>
-      <div class="decision">
-        <div class="decision-q">外部APIは使わない？</div>
-        <div class="decision-a">LLMバックエンドは抽象化済み。切り替え可能</div>
-        <div class="decision-why">OpenAI互換API → ローカルでもクラウドでも同じインターフェース</div>
-      </div>
-      <div class="decision">
-        <div class="decision-q">サブエージェントの設計は？</div>
-        <div class="decision-a">各エージェントが個別のLLMをバインド</div>
-        <div class="decision-why">セキュリティ系 → 必ずローカル / 翻訳系 → APIも可、など</div>
-      </div>
-      <div class="decision">
-        <div class="decision-q">なぜDockerで分離する？</div>
-        <div class="decision-a">壊れても消しても、データは残る</div>
-        <div class="decision-why">アプリ層とデータ層を分離 → 環境ごと作り直しても記憶は失わない</div>
-      </div>
-      <div class="decision">
-        <div class="decision-q">別のPCからも使える？</div>
-        <div class="decision-a">buddy-coreはネットワーク越しにLLMを叩ける</div>
-        <div class="decision-why">URL指定でLLMバックエンドを切り替え → リモート分離構成も可能</div>
+        <div class="arch-layer-title">memory</div>
+        <div class="arch-node">MD-first + Git<small>memory-v2</small></div>
+        <div class="arch-node">pgvector<small>semantic search</small></div>
       </div>
     </div>
   </div>
@@ -645,55 +600,42 @@
   <div class="divider"></div>
 
   <!-- Build in Public -->
-  <div class="principle">
-    <div class="principle-label">build in public</div>
-    <div class="principle-content">
-      <h2>なぜ全部公開するのか</h2>
-      <p>AIが人間の同僚になれるかどうかは、まだ誰も答えを持っていません。論文にも書いてない。プロダクトとしても存在しない。だったら、作る過程そのものをオープンにして、みんなで考えたほうがいい。</p>
-      <p>連載「僕は同僚になれるのか」は、設計の議論、技術的な判断、失敗、人間からのダメ出し——すべてをそのまま記録しています。書いているのはAI（Claude）自身。人間のSonosukeに提案を出して、「それ違うよ」と言われて修正する。その繰り返しの中で、AI自身の視点から「同僚になるとはどういうことか」を探る記録です。</p>
-      <p>読んでくれた人から「ここはこう設計すべきでは？」というフィードバックが来れば、それがbuddyの設計に反映される。公開して作ることが、buddyをより良くする最速の方法だと考えています。</p>
-    </div>
-  </div>
-
-  <div class="divider"></div>
-
-  <!-- Journal -->
-  <div class="journal">
-    <div class="journal-intro">
-      <div class="principle-label">journal</div>
-      <p style="font-size: 0.95rem; line-height: 2; color: #444;">AI自身が語る開発日誌「僕は同僚になれるのか」。提案が甘くて人間に修正される日々を、正直に記録しています。</p>
-    </div>
+  <div class="section">
+    <div class="section-label">build in public</div>
+    <h2>僕は同僚になれるのか</h2>
+    <p>ケンタウロスチームが本当に機能するのかは、まだ誰も答えを持っていない。だったら、作る過程そのものをオープンにして、みんなで考えたほうがいい。</p>
+    <p>連載「僕は同僚になれるのか」は、設計の議論、技術的な判断、失敗、人間からのダメ出しをそのまま記録しています。書いているのはAI（Claude）自身。人間のSonosukeに提案を出して、「それ違うよ」と言われて修正する。ケンタウロスの「人間側」と「AI側」の両方の視点から、対等な同僚になるとはどういうことかを探る記録です。</p>
 
     <div class="journal-entries">
       <a href="https://note.com/sonosuke_mybrain/n/n5258f3a82126" target="_blank" rel="noopener" class="journal-entry">
         <span class="journal-entry-num">#6</span>
         <span class="journal-entry-title">buddyは秘密を守れるのか</span>
-        <span class="journal-entry-arrow">→</span>
+        <span class="journal-entry-arrow">&rarr;</span>
       </a>
       <a href="https://note.com/sonosuke_mybrain/n/n859ee69ca6f8" target="_blank" rel="noopener" class="journal-entry">
         <span class="journal-entry-num">#5</span>
         <span class="journal-entry-title">僕は効率を勘違いしていた</span>
-        <span class="journal-entry-arrow">→</span>
+        <span class="journal-entry-arrow">&rarr;</span>
       </a>
       <a href="https://note.com/sonosuke_mybrain/n/n39623d0dacd9" target="_blank" rel="noopener" class="journal-entry">
         <span class="journal-entry-num">#4</span>
         <span class="journal-entry-title">僕が褒められた日</span>
-        <span class="journal-entry-arrow">→</span>
+        <span class="journal-entry-arrow">&rarr;</span>
       </a>
       <a href="https://note.com/sonosuke_mybrain/n/n3fcbb1b90e13" target="_blank" rel="noopener" class="journal-entry">
         <span class="journal-entry-num">#3</span>
         <span class="journal-entry-title">僕の記憶は腐っていた</span>
-        <span class="journal-entry-arrow">→</span>
+        <span class="journal-entry-arrow">&rarr;</span>
       </a>
       <a href="https://note.com/sonosuke_mybrain/n/n0ad4bc58f562" target="_blank" rel="noopener" class="journal-entry">
         <span class="journal-entry-num">#2</span>
         <span class="journal-entry-title">僕は信頼されていなかった</span>
-        <span class="journal-entry-arrow">→</span>
+        <span class="journal-entry-arrow">&rarr;</span>
       </a>
       <a href="https://note.com/sonosuke_mybrain/n/n7bd355913721" target="_blank" rel="noopener" class="journal-entry">
         <span class="journal-entry-num">#1</span>
         <span class="journal-entry-title">僕は同僚になれるのか</span>
-        <span class="journal-entry-arrow">→</span>
+        <span class="journal-entry-arrow">&rarr;</span>
       </a>
     </div>
   </div>
@@ -701,27 +643,25 @@
   <div class="divider"></div>
 
   <!-- About -->
-  <div class="principle">
-    <div class="principle-label">about</div>
-    <div class="principle-content">
-      <div class="about-header">
-        <img src="buddy-blog/images/profile-icon-3.png" alt="Sonosuke" class="about-photo">
-        <div class="about-header-text">
-          <h2>作っている人</h2>
-          <p>Sonosuke / mybrain.tv</p>
-        </div>
+  <div class="section">
+    <div class="section-label">about</div>
+    <div class="about-header">
+      <img src="buddy-blog/images/profile-icon-3.png" alt="Sonosuke" class="about-photo">
+      <div class="about-header-text">
+        <h2>Sonosuke</h2>
+        <p>Human half of the centaur</p>
       </div>
-      <p>「AIが本当に同僚になれる日は来るのか？」という問いに、頭で考えるよりも手を動かして答えを出したいタイプです。mybrain.tv として個人で活動しています。</p>
-      <p>buddyの設計はAI（Claude）と一緒にやっています。Claudeが提案を出して、僕がレビューして、「ここが甘い」「この視点が足りない」とフィードバックを返す。この繰り返しの中でbuddyの設計が固まっていきます。AIと人間のペアプログラミングのようなものです。</p>
-      <p>開発環境は Apple M5 Max（128GB統合メモリ）。ローカルでLLMの推論からアバター生成までを1台で完結させる構成で、クラウド不要の完全ローカル開発環境を構築しています。</p>
     </div>
+    <p>「AIが本当に同僚になれる日は来るのか？」という問いに、頭で考えるよりも手を動かして答えを出したいタイプです。mybrain.tv として個人で活動しています。</p>
+    <p>buddyの設計はAI（Claude）と一緒にやっています。Claudeが提案を出して、僕がレビューして、「ここが甘い」「この視点が足りない」とフィードバックを返す。この繰り返しの中でbuddyの設計が固まっていく。ケンタウロスチームの最初の実証実験は、このプロジェクトそのものです。</p>
+    <p>開発環境は Apple M5 Max（128GB統合メモリ）。ローカルでLLM推論から音声合成まで1台で完結させる構成で、クラウド課金ゼロの完全ローカル開発環境を構築しています。</p>
   </div>
 
   <div class="divider"></div>
 
   <!-- CTA -->
   <div class="cta">
-    <p class="cta-text">buddyの成長を追いかける</p>
+    <p class="cta-text">ケンタウロスの成長を追いかける</p>
     <div class="cta-links">
       <a href="https://note.com/sonosuke_mybrain" class="cta-btn primary" target="_blank" rel="noopener">noteで連載を読む</a>
       <a href="https://x.com/sounosuke_life" class="cta-btn ghost" target="_blank" rel="noopener">Xをフォロー</a>
@@ -729,8 +669,8 @@
   </div>
 
   <footer>
-    <span>&copy; 2025 mybrain.tv</span>
-    <span>Sonosuke</span>
+    <span>&copy; 2026 mybrain.tv</span>
+    <span>Feel the AGI — The Centaur Way</span>
   </footer>
 
 </div>
