@@ -1,0 +1,2245 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="mobile-web-app-capable" content="yes">
+<title>SNAKE DEFENSE v0.2</title>
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin:0; padding:0; height:100%; background:#000; overflow:hidden;
+    font-family: 'Helvetica Neue', Arial, sans-serif; color:#9cf; user-select:none;
+    -webkit-user-select:none; touch-action:none; overscroll-behavior:none;
+    position:fixed; width:100%; }
+  #game { display:block; position:absolute; inset:0; touch-action:none; }
+  /* タッチエリアの薄いガイド（左右半分） */
+  #touchHint { position:fixed; inset:0; pointer-events:none; display:none; z-index:2; }
+  #touchHint .half { position:absolute; top:0; bottom:0; width:50%;
+    display:flex; align-items:flex-end; justify-content:center; padding-bottom:30px;
+    color:rgba(120,180,255,0.25); font-size:30px; letter-spacing:8px; }
+  #touchHint .L { left:0; border-right:1px dashed rgba(80,130,200,0.15); }
+  #touchHint .R { right:0; }
+  body.touch #touchHint { display:block; }
+  body.touch #debug { display:none; }
+  /* iOSのセーフエリア */
+  #hud { padding-top: env(safe-area-inset-top); padding-left: env(safe-area-inset-left); }
+  #titlebar, #debug { padding-right: env(safe-area-inset-right); }
+  #unlock { padding-left: env(safe-area-inset-left); padding-bottom: env(safe-area-inset-bottom); }
+  #build  { padding-right: env(safe-area-inset-right); padding-bottom: env(safe-area-inset-bottom); }
+  @media (max-width: 600px){
+    #hud { font-size:11px; }
+    #hud .v { font-size:14px; }
+    #titlebar { font-size:10px; letter-spacing:2px; }
+    #unlock { font-size:9px; }
+    #unlock .tag { padding:1px 5px; font-size:9px; }
+    #build { font-size:10px; }
+    #build .seg { width:9px; height:9px; }
+    .overlay h1 { font-size:38px; letter-spacing:8px; }
+    .overlay h2 { font-size:11px; letter-spacing:4px; margin-bottom:20px; }
+    .overlay p { font-size:11px; max-width:90%; }
+    .overlay .btn { padding:12px 30px; font-size:16px; letter-spacing:4px; }
+  }
+  #hud { position:fixed; top:14px; left:16px; font-size:13px; line-height:1.5;
+    text-shadow:0 0 6px #06f; pointer-events:none; letter-spacing:1px; }
+  #hud .v { color:#cff; font-size:18px; }
+  #titlebar { position:fixed; top:14px; right:18px; font-size:14px; letter-spacing:3px;
+    color:#79b; text-shadow:0 0 8px #06f; }
+  #debug { position:fixed; top:44px; right:18px; font-size:11px; line-height:1.5;
+    color:#9cf; text-shadow:0 0 6px #06f; pointer-events:none; text-align:right;
+    font-family:monospace; opacity:0.85; }
+  #debug .warn { color:#fa6; }
+  #debug .bad  { color:#f66; font-weight:bold; }
+  #unlock { position:fixed; bottom:14px; left:16px; font-size:12px; letter-spacing:1px;
+    color:#79b; text-shadow:0 0 6px #06f; pointer-events:none; }
+  #unlock .row { display:flex; gap:6px; margin-top:4px; }
+  #unlock .tag { padding:2px 8px; border:1px solid #345; border-radius:2px; opacity:0.35; font-size:11px;}
+  #unlock .tag.on { opacity:1; border-color:currentColor; }
+  #build { position:fixed; bottom:14px; right:16px; font-size:12px; letter-spacing:1px;
+    color:#79b; text-shadow:0 0 6px #06f; pointer-events:none; text-align:right; }
+  #build .seg { display:inline-block; width:12px; height:12px; border-radius:50%; margin:0 1px;
+    vertical-align:middle; box-shadow:0 0 6px currentColor; }
+  .overlay { position:fixed; inset:0; display:flex; flex-direction:column;
+    align-items:center; justify-content:center;
+    background:radial-gradient(ellipse at center,rgba(0,10,30,0.7),rgba(0,0,0,0.95));
+    z-index:10; cursor:pointer; }
+  .overlay h1 { font-size:52px; letter-spacing:14px; margin:0 0 4px 0;
+    color:#cff; text-shadow:0 0 24px #06f, 0 0 60px #06f; font-weight:300; }
+  .overlay h2 { font-size:14px; letter-spacing:6px; margin:0 0 30px 0; color:#79b; font-weight:400; }
+  .overlay p { color:#9cf; font-size:13px; line-height:1.8; letter-spacing:1px; max-width:500px; text-align:center; }
+  .overlay .key { display:inline-block; padding:2px 10px; border:1px solid #58a;
+    border-radius:3px; margin:0 3px; color:#cff; font-family:monospace; }
+  .overlay .btn { margin-top:24px; padding:12px 40px; border:1px solid #6af;
+    color:#cff; font-size:18px; letter-spacing:6px; background:rgba(0,40,80,0.4);
+    border-radius:2px; box-shadow:0 0 24px #06f inset, 0 0 24px #06f; }
+  #gameover .score { font-size:42px; color:#fcc; margin:10px 0 6px 0; text-shadow:0 0 18px #f44; }
+  #gameover h1 { color:#fcc; text-shadow:0 0 24px #f33, 0 0 60px #f33; }
+  #gameover.hidden, #start.hidden { display:none; }
+  .toast { position:fixed; left:50%; top:30%; transform:translateX(-50%);
+    padding:12px 26px; background:rgba(0,20,40,0.85); border:1px solid #6af;
+    color:#cff; letter-spacing:4px; font-size:18px; text-shadow:0 0 12px #6af;
+    pointer-events:none; opacity:0; transition:opacity 0.3s; z-index:5; }
+  .toast.show { opacity:1; }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<div id="hud">
+  <div>CORE <span class="v" id="core" style="color:#9fc">100</span><span style="opacity:0.5;font-size:13px;"> / 100</span></div>
+  <div>SCORE <span class="v" id="score">0</span></div>
+  <div>KILLS <span class="v" id="kills">0</span></div>
+  <div>LENGTH <span class="v" id="length">0</span></div>
+  <div>TIME <span class="v" id="time">0.0</span></div>
+</div>
+<div id="titlebar">SNAKE DEFENSE v0.2</div>
+<div id="debug"></div>
+<div id="touchHint">
+  <div class="half L">◀ TAP / HOLD</div>
+  <div class="half R">TAP / HOLD ▶</div>
+</div>
+<div id="unlock">
+  ENEMY TYPES UNLOCKED
+  <div class="row" id="unlockRow"></div>
+</div>
+<div id="build">
+  YOUR BUILD
+  <div id="buildRow" style="margin-top:4px;"></div>
+</div>
+<div class="toast" id="toast"></div>
+
+<div id="start" class="overlay">
+  <h1>SNAKE DEFENSE</h1>
+  <h2>v0.2 — ABSORB AND EVOLVE</h2>
+  <p>
+    エネルギーコアを守れ。<br>
+    機械生命体スネークは撃破するたびに体節が伸び、能力が進化する。<br><br>
+    敵を倒すごとに自分の体節が伸び、<strong>その敵の能力</strong>を継承する。<br>
+    あなたの体は色とりどりの兵装の連なりとなる。<br><br>
+    <span class="key">←</span> <span class="key">→</span> / <span class="key">A</span> <span class="key">D</span> で 45° 回転<br>
+    モバイル：画面の左/右半分をタップ・ホールド<br>
+    常時直進・全能力自動発動
+  </p>
+  <div class="btn">START</div>
+</div>
+
+<div id="gameover" class="overlay hidden">
+  <h1>CORE LOST</h1>
+  <div class="score" id="finalScore">0</div>
+  <div style="color:#9cf; font-size:13px;">kills: <span id="finalKills">0</span>　build: <span id="finalLen">0</span></div>
+  <h2 style="margin-top:30px;">RESTART</h2>
+</div>
+
+<script>
+'use strict';
+
+//==============================================================
+// CONFIG
+//==============================================================
+const CFG = {
+  CORE_RADIUS: 54,
+  HEAD_RADIUS: 9,
+  SEG_RADIUS: 8,
+  ENEMY_HEAD_RADIUS: 9,
+  ENEMY_SEG_RADIUS: 8,
+  DEBRIS_RADIUS: 4,
+  HOMING_RADIUS: 5,
+  MINE_RADIUS: 7,
+  SEG_SPACING: 18,
+  PLAYER_SPEED: 2.6,
+  PLAYER_DASH_SPEED: 5.5,
+  ENEMY_SPEED: 0.7,
+  ENEMY_DASH_SPEED: 1.8,
+  DEBRIS_SPEED: 4.5,
+  HOMING_SPEED: 2.8,
+  TURN_COOLDOWN: 6,
+  SEG_HP: 3,
+  SPAWN_INTERVAL_START: 360,
+  SPAWN_INTERVAL_MIN: 90,
+  SPAWN_RAMP_TIME: 90,
+  CAMERA_RADIUS: 520,
+  WORLD_BOUND: 900,
+  ENEMY_INIT_LENGTH: 1,
+  ENEMY_MAX_LENGTH: 30,    // 敵スネーク体節数の上限
+  PLAYER_MAX_LENGTH: 30,   // プレイヤー体節数の上限
+  DEBRIS_MAX: 320,
+  LASER_MAX: 12,
+  HOMING_MAX: 20,
+  MINE_MAX: 60,
+  MINION_MAX: 30,
+  ENEMY_MAX: 22,
+  CORE_HP: 100,
+  CORE_HEAL_PER_KILL: 1,
+  MINE_RADIUS_EXPLODE: 36, // 頭4個分
+  HOMING_LIFE: 600,        // 10秒
+  HOMING_BURST_RADIUS: 50,
+  DASH_DURATION: 120,      // 2秒
+  DASH_COOLDOWN: 360,      // 6秒
+  LASER_WARN: 240,         // 4秒サーチ
+  LASER_FIRE: 60,          // 1秒照射
+  LASER_INTERVAL: 600,     // 10秒間隔
+  LASER_HALF_WIDTH: 6,
+  PELLET_INTERVAL: 480,    // 8秒
+  MINE_INTERVAL: 300,      // 5秒
+  HOMING_INTERVAL: 480,    // 8秒
+  SUMMON_INTERVAL: 300,    // 5秒
+  ORB_ANGULAR_SPEED: 0.04,
+  ORB_RADIUS_FROM_SEG: 28,
+};
+
+//==============================================================
+// ENEMY TYPES
+//==============================================================
+// アンロック進化順で定義（表示順もこの順序）
+const TYPES = {
+  ram:    { color:'#f63', glow:'rgba(255,140,60,0.7)',  tip:'#fc6', name:'RAM' },
+  dash:   { color:'#f93', glow:'rgba(255,160,80,0.7)',  tip:'#fc8', name:'DASH' },
+  pellet: { color:'#c6f', glow:'rgba(200,120,255,0.7)', tip:'#fcf', name:'PELLET' },
+  mine:   { color:'#fc3', glow:'rgba(255,210,60,0.7)',  tip:'#ffa', name:'MINE' },
+  orb:    { color:'#6ff', glow:'rgba(120,255,255,0.7)', tip:'#cff', name:'ORB' },
+  homing: { color:'#f6c', glow:'rgba(255,120,200,0.7)', tip:'#fcd', name:'HOMING' },
+  summon: { color:'#ddd', glow:'rgba(220,220,220,0.7)', tip:'#fff', name:'SUMMON' },
+  laser:  { color:'#6f6', glow:'rgba(120,255,120,0.7)', tip:'#cfc', name:'LASER' },
+};
+const TYPE_KEYS = Object.keys(TYPES);
+
+// アンロック条件：直前タイプを10匹倒したら次が1つ解放（直列）
+const UNLOCK_PREREQ = {
+  ram:    null,
+  dash:   {prereq:'ram',    count:10},
+  pellet: {prereq:'dash',   count:10},
+  mine:   {prereq:'pellet', count:10},
+  orb:    {prereq:'mine',   count:10},
+  homing: {prereq:'orb',    count:10},
+  summon: {prereq:'homing', count:10},
+  laser:  {prereq:'summon', count:10},
+};
+function isUnlocked(type){
+  if(type==='ram') return true;
+  const req = UNLOCK_PREREQ[type];
+  if(!req) return false;
+  return (state.killsByType[req.prereq]||0) >= req.count;
+}
+function unlockDepth(type){
+  let d=0, t=type;
+  while(UNLOCK_PREREQ[t] && UNLOCK_PREREQ[t].prereq){ d++; t = UNLOCK_PREREQ[t].prereq; }
+  return d;
+}
+
+//==============================================================
+// CANVAS / GLOBALS
+//==============================================================
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+let W=0, H=0, CX=0, CY=0;
+function resize(){
+  W = canvas.width = window.innerWidth;
+  H = canvas.height = window.innerHeight;
+  CX = W/2; CY = H/2;
+}
+window.addEventListener('resize', resize); resize();
+
+//==============================================================
+// AUDIO — EDM space
+//==============================================================
+const Audio = {
+  ctx:null, master:null, musicGain:null, sfxGain:null, started:false,
+  bpm:128, step:0, nextNoteTime:0, scheduleAheadTime:0.15, lookahead:25, timer:null,
+  init(){
+    if (this.started) return;
+    const C = new (window.AudioContext||window.webkitAudioContext)();
+    this.ctx = C;
+    this.master = C.createGain(); this.master.gain.value = 0.7;
+    this.musicGain = C.createGain(); this.musicGain.gain.value = 0.5;
+    this.sfxGain = C.createGain(); this.sfxGain.gain.value = 0.6;
+    const len = C.sampleRate * 1.6;
+    const ir = C.createBuffer(2, len, C.sampleRate);
+    for (let ch=0; ch<2; ch++){
+      const d = ir.getChannelData(ch);
+      for (let i=0;i<len;i++) d[i] = (Math.random()*2-1) * Math.pow(1 - i/len, 2.5);
+    }
+    const conv = C.createConvolver(); conv.buffer = ir;
+    const wet = C.createGain(); wet.gain.value = 0.16;
+    this.musicGain.connect(this.master);
+    this.sfxGain.connect(this.master);
+    this.sfxGain.connect(conv); conv.connect(wet); wet.connect(this.master);
+    this.master.connect(C.destination);
+    this.started = true;
+    this.nextNoteTime = C.currentTime + 0.1;
+    this.startScheduler();
+  },
+  resume(){ if (this.ctx && this.ctx.state==='suspended') this.ctx.resume(); },
+  startScheduler(){
+    if (this.timer) return;
+    const tick = ()=>{
+      if (!this.ctx) return;
+      const secPerStep = 60 / this.bpm / 4;
+      while (this.nextNoteTime < this.ctx.currentTime + this.scheduleAheadTime){
+        this.scheduleStep(this.step, this.nextNoteTime);
+        this.nextNoteTime += secPerStep;
+        this.step = (this.step + 1) % 64;
+      }
+    };
+    this.timer = setInterval(tick, this.lookahead);
+  },
+  scheduleStep(step, t){
+    const beat = step % 4;
+    const bar = Math.floor(step/16);
+    if (step % 4 === 0) this.kick(t, 0.9);
+    if (step % 8 === 4) this.clap(t, 0.5);
+    if (step % 2 === 1) this.hat(t, 0.18);
+    if (step % 16 === 14) this.hat(t, 0.28, true);
+    const bassPat = [36,0,0,36, 0,0,36,0, 39,0,0,36, 0,43,0,0];
+    const bn = bassPat[step % 16];
+    if (bn) this.bass(t, this.midi(bn + (bar%2===1?-2:0)));
+    if (step % 2 === 0){
+      const arp = [60,63,67,70, 67,63,70,63,  60,63,67,75, 67,70,63,60];
+      const an = arp[(step/2) % 16];
+      this.arp(t, this.midi(an));
+    }
+    if (step % 16 === 0){
+      const chords = [[48,55,63,70],[46,53,58,65],[51,58,65,72],[46,53,58,65]];
+      const ch = chords[bar % 4];
+      ch.forEach(n => this.pad(t, this.midi(n)));
+    }
+  },
+  midi(n){ return 440 * Math.pow(2,(n-69)/12); },
+  kick(t,vol=1){
+    const C=this.ctx; const o=C.createOscillator(); const g=C.createGain();
+    o.frequency.setValueAtTime(140,t); o.frequency.exponentialRampToValueAtTime(40,t+0.12);
+    g.gain.setValueAtTime(vol*0.9,t); g.gain.exponentialRampToValueAtTime(0.001,t+0.25);
+    o.connect(g); g.connect(this.musicGain); o.start(t); o.stop(t+0.3);
+  },
+  clap(t,vol=0.6){
+    const C=this.ctx;
+    const buf=C.createBuffer(1,C.sampleRate*0.15,C.sampleRate); const d=buf.getChannelData(0);
+    for(let i=0;i<d.length;i++) d[i]=(Math.random()*2-1)*Math.pow(1-i/d.length,3);
+    const s=C.createBufferSource(); s.buffer=buf;
+    const f=C.createBiquadFilter(); f.type='bandpass'; f.frequency.value=1400; f.Q.value=1.5;
+    const g=C.createGain(); g.gain.value=vol;
+    s.connect(f); f.connect(g); g.connect(this.musicGain); s.start(t);
+  },
+  hat(t,vol=0.2,open=false){
+    const C=this.ctx; const dur=open?0.18:0.04;
+    const buf=C.createBuffer(1,C.sampleRate*dur,C.sampleRate); const d=buf.getChannelData(0);
+    for(let i=0;i<d.length;i++) d[i]=(Math.random()*2-1)*Math.pow(1-i/d.length,2);
+    const s=C.createBufferSource(); s.buffer=buf;
+    const f=C.createBiquadFilter(); f.type='highpass'; f.frequency.value=7000;
+    const g=C.createGain(); g.gain.value=vol;
+    s.connect(f); f.connect(g); g.connect(this.musicGain); s.start(t);
+  },
+  bass(t,freq){
+    const C=this.ctx; const o=C.createOscillator(); const g=C.createGain();
+    const f=C.createBiquadFilter(); f.type='lowpass';
+    f.frequency.setValueAtTime(800,t); f.frequency.exponentialRampToValueAtTime(180,t+0.18);
+    o.type='sawtooth'; o.frequency.value=freq;
+    g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime(0.32,t+0.005);
+    g.gain.exponentialRampToValueAtTime(0.001,t+0.22);
+    o.connect(f); f.connect(g); g.connect(this.musicGain); o.start(t); o.stop(t+0.3);
+  },
+  arp(t,freq){
+    const C=this.ctx; const o=C.createOscillator(); const g=C.createGain();
+    o.type='square'; o.frequency.value=freq;
+    g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime(0.06,t+0.005);
+    g.gain.exponentialRampToValueAtTime(0.001,t+0.18);
+    const f=C.createBiquadFilter(); f.type='lowpass'; f.frequency.value=3200;
+    o.connect(f); f.connect(g); g.connect(this.musicGain); o.start(t); o.stop(t+0.2);
+  },
+  pad(t,freq){
+    const C=this.ctx;
+    const o1=C.createOscillator(); o1.type='sine'; o1.frequency.value=freq;
+    const o2=C.createOscillator(); o2.type='triangle'; o2.frequency.value=freq*2.003;
+    const g=C.createGain();
+    g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime(0.05,t+0.4);
+    g.gain.linearRampToValueAtTime(0.04,t+1.4); g.gain.linearRampToValueAtTime(0,t+1.9);
+    const f=C.createBiquadFilter(); f.type='lowpass'; f.frequency.value=1800;
+    o1.connect(f); o2.connect(f); f.connect(g); g.connect(this.musicGain);
+    o1.start(t); o2.start(t); o1.stop(t+2); o2.stop(t+2);
+  },
+  sfx(type){
+    if (!this.ctx) return;
+    const C=this.ctx; const t=C.currentTime;
+    const sfxs = {
+      break: ()=>{
+        const o=C.createOscillator(); const g=C.createGain();
+        o.type='sawtooth'; o.frequency.setValueAtTime(380,t);
+        o.frequency.exponentialRampToValueAtTime(60,t+0.25);
+        g.gain.setValueAtTime(0.5,t); g.gain.exponentialRampToValueAtTime(0.001,t+0.3);
+        o.connect(g); g.connect(this.sfxGain); o.start(t); o.stop(t+0.32);
+      },
+      bounce: ()=>{
+        const o=C.createOscillator(); const g=C.createGain();
+        o.type='sine'; o.frequency.setValueAtTime(1200,t);
+        o.frequency.exponentialRampToValueAtTime(700,t+0.08);
+        g.gain.setValueAtTime(0.18,t); g.gain.exponentialRampToValueAtTime(0.001,t+0.1);
+        o.connect(g); g.connect(this.sfxGain); o.start(t); o.stop(t+0.12);
+      },
+      ram: ()=>{
+        const o=C.createOscillator(); const g=C.createGain();
+        o.type='triangle'; o.frequency.setValueAtTime(220,t);
+        o.frequency.exponentialRampToValueAtTime(90,t+0.18);
+        g.gain.setValueAtTime(0.55,t); g.gain.exponentialRampToValueAtTime(0.001,t+0.22);
+        o.connect(g); g.connect(this.sfxGain); o.start(t); o.stop(t+0.24);
+      },
+      explode: ()=>{
+        const buf=C.createBuffer(1,C.sampleRate*0.6,C.sampleRate); const d=buf.getChannelData(0);
+        for(let i=0;i<d.length;i++) d[i]=(Math.random()*2-1)*Math.pow(1-i/d.length,1.6);
+        const s=C.createBufferSource(); s.buffer=buf;
+        const f=C.createBiquadFilter(); f.type='lowpass';
+        f.frequency.setValueAtTime(2400,t); f.frequency.exponentialRampToValueAtTime(120,t+0.5);
+        const g=C.createGain(); g.gain.value=0.6;
+        s.connect(f); f.connect(g); g.connect(this.sfxGain); s.start(t);
+        const o=C.createOscillator(); const og=C.createGain();
+        o.type='sine'; o.frequency.setValueAtTime(160,t);
+        o.frequency.exponentialRampToValueAtTime(45,t+0.5);
+        og.gain.setValueAtTime(0.7,t); og.gain.exponentialRampToValueAtTime(0.001,t+0.55);
+        o.connect(og); og.connect(this.sfxGain); o.start(t); o.stop(t+0.6);
+      },
+      shoot: ()=>{
+        const o=C.createOscillator(); const g=C.createGain();
+        o.type='square'; o.frequency.setValueAtTime(820,t);
+        o.frequency.exponentialRampToValueAtTime(380,t+0.1);
+        g.gain.setValueAtTime(0.18,t); g.gain.exponentialRampToValueAtTime(0.001,t+0.12);
+        o.connect(g); g.connect(this.sfxGain); o.start(t); o.stop(t+0.14);
+      },
+      mine_set: ()=>{
+        const o=C.createOscillator(); const g=C.createGain();
+        o.type='sine'; o.frequency.setValueAtTime(300,t);
+        o.frequency.linearRampToValueAtTime(420,t+0.08);
+        g.gain.setValueAtTime(0.16,t); g.gain.exponentialRampToValueAtTime(0.001,t+0.1);
+        o.connect(g); g.connect(this.sfxGain); o.start(t); o.stop(t+0.12);
+      },
+      laser_warn: ()=>{
+        const o=C.createOscillator(); const g=C.createGain();
+        o.type='sine'; o.frequency.value=800;
+        g.gain.setValueAtTime(0.08,t); g.gain.linearRampToValueAtTime(0.0,t+1.0);
+        const lfo=C.createOscillator(); lfo.frequency.value=8;
+        const lg=C.createGain(); lg.gain.value=200;
+        lfo.connect(lg); lg.connect(o.frequency);
+        o.connect(g); g.connect(this.sfxGain); o.start(t); lfo.start(t);
+        o.stop(t+1.0); lfo.stop(t+1.0);
+      },
+      laser_fire: ()=>{
+        const o=C.createOscillator(); const g=C.createGain();
+        o.type='sawtooth'; o.frequency.value=140;
+        g.gain.setValueAtTime(0.25,t); g.gain.linearRampToValueAtTime(0.15,t+0.5);
+        g.gain.exponentialRampToValueAtTime(0.001,t+1.0);
+        const f=C.createBiquadFilter(); f.type='lowpass'; f.frequency.value=1800;
+        o.connect(f); f.connect(g); g.connect(this.sfxGain); o.start(t); o.stop(t+1.0);
+      },
+      gameover: ()=>{
+        const o=C.createOscillator(); const g=C.createGain();
+        o.type='sawtooth'; o.frequency.setValueAtTime(440,t);
+        o.frequency.exponentialRampToValueAtTime(40,t+1.8);
+        g.gain.setValueAtTime(0.5,t); g.gain.exponentialRampToValueAtTime(0.001,t+2.0);
+        o.connect(g); g.connect(this.sfxGain); o.start(t); o.stop(t+2.0);
+      },
+      turn: ()=>{
+        const o=C.createOscillator(); const g=C.createGain();
+        o.type='sine'; o.frequency.value=900;
+        g.gain.setValueAtTime(0.07,t); g.gain.exponentialRampToValueAtTime(0.001,t+0.05);
+        o.connect(g); g.connect(this.sfxGain); o.start(t); o.stop(t+0.06);
+      },
+      dash: ()=>{
+        const o=C.createOscillator(); const g=C.createGain();
+        o.type='sawtooth'; o.frequency.setValueAtTime(220,t);
+        o.frequency.exponentialRampToValueAtTime(600,t+0.4);
+        g.gain.setValueAtTime(0.35,t); g.gain.exponentialRampToValueAtTime(0.001,t+0.45);
+        o.connect(g); g.connect(this.sfxGain); o.start(t); o.stop(t+0.5);
+      },
+      heal: ()=>{
+        const o=C.createOscillator(); const g=C.createGain();
+        o.type='sine'; o.frequency.setValueAtTime(600,t);
+        o.frequency.linearRampToValueAtTime(900,t+0.18);
+        g.gain.setValueAtTime(0.2,t); g.gain.exponentialRampToValueAtTime(0.001,t+0.22);
+        o.connect(g); g.connect(this.sfxGain); o.start(t); o.stop(t+0.24);
+      }
+    };
+    (sfxs[type]||(()=>{}))();
+  }
+};
+
+//==============================================================
+// STATE
+//==============================================================
+let state = {
+  running:false, over:false, frame:0, time:0, score:0,
+  spawnTimer:0, enemies:[], debris:[], particles:[], stars:[],
+  player:null, killCount:0,
+  coreHp:100, coreFlash:0, coreHealFlash:0, viewScale:1.0,
+  mines:[], lasers:[], homingMissiles:[], orbs:[], minions:[],
+  toastTimer:0,
+  killsByType:{},
+  lastFrameTime:0, frameDeltas:[], fps:60, lowFpsCount:0,
+};
+
+//==============================================================
+// HELPERS
+//==============================================================
+function dist2(ax,ay,bx,by){ const dx=ax-bx,dy=ay-by; return dx*dx+dy*dy; }
+function reflect(d,nx,ny){ const dot=d.vx*nx+d.vy*ny; d.vx-=2*dot*nx; d.vy-=2*dot*ny; }
+function nearestDir(ax,ay){
+  const target=Math.atan2(ay,ax);
+  let bestDir=0,bestDiff=Infinity;
+  for(let i=0;i<8;i++){
+    const a=i*Math.PI/4;
+    let diff=Math.abs(((a-target+Math.PI*3)%(Math.PI*2))-Math.PI);
+    if(diff<bestDiff){bestDiff=diff;bestDir=i;}
+  }
+  return bestDir;
+}
+function findNearestEnemyFrom(x,y){
+  let best=null,bd=Infinity;
+  for(const e of state.enemies){
+    if(e.dead) continue;
+    const d=dist2(x,y,e.x,e.y);
+    if(d<bd){bd=d;best=e;}
+  }
+  return best;
+}
+function findNearestPlayerSegFrom(x,y){
+  const p=state.player; if(!p) return {x:p?p.x:0, y:p?p.y:0};
+  // 通常は頭を返す
+  return {x:p.x, y:p.y};
+}
+// 敵能力ごとのコアダメージ：int(そのタイプの撃破数/10 + 1)
+function abilityDamage(type){
+  return Math.floor((state.killsByType[type]||0)/10) + 1;
+}
+function damageCore(amount,x,y){
+  if(state.over) return;
+  state.coreHp-=amount;
+  state.coreFlash=24;
+  burst(x,y,'#f44',6,2);
+  if(state.coreHp<=0){
+    state.coreHp=0;
+    burst(0,0,'#fcc',60,8); burst(0,0,'#f66',80,10); burst(0,0,'#fff',40,6);
+    triggerGameOver();
+  }
+}
+function healCore(amount,x,y){
+  if(state.over||state.coreHp>=CFG.CORE_HP) return;
+  state.coreHp=Math.min(CFG.CORE_HP,state.coreHp+amount);
+  state.coreHealFlash=28;
+  for(let i=0;i<10;i++){
+    const a=Math.atan2(-y,-x)+(Math.random()-0.5)*0.5;
+    const sp=2+Math.random()*2;
+    state.particles.push({x,y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp,
+      life:30+Math.random()*15,max:45,color:'#6f9'});
+  }
+  Audio.sfx('heal');
+}
+function updateViewScale(){
+  let maxDist=CFG.CORE_RADIUS+100;
+  if(state.player){
+    const p=state.player;
+    maxDist=Math.max(maxDist,Math.hypot(p.x,p.y)+50);
+    for(let i=0;i<p.segments.length;i++){
+      const tp=p.trail[(i+1)*CFG.SEG_SPACING];
+      if(tp) maxDist=Math.max(maxDist,Math.hypot(tp.x,tp.y)+30);
+    }
+  }
+  const halfMin=Math.min(W,H)/2-60;
+  let target=1.0;
+  if(maxDist>halfMin) target=halfMin/maxDist;
+  target=Math.max(0.35,Math.min(1.0,target));
+  state.viewScale+=(target-state.viewScale)*0.06;
+}
+function burst(x,y,color,n=14,speed=4){
+  for(let i=0;i<n;i++){
+    const a=Math.random()*Math.PI*2;
+    const s=(0.4+Math.random())*speed;
+    state.particles.push({x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s,
+      life:28+Math.random()*20,max:40,color});
+  }
+}
+function showToast(msg){
+  const el=document.getElementById('toast');
+  el.textContent=msg;
+  el.classList.add('show');
+  state.toastTimer=180;
+}
+function tickToast(){
+  if(state.toastTimer>0){
+    state.toastTimer--;
+    if(state.toastTimer===0) document.getElementById('toast').classList.remove('show');
+  }
+}
+
+//==============================================================
+// SPAWN: TYPE POOL based on killCount
+//==============================================================
+function chooseEnemyType(){
+  const unlocked=[];
+  for(const k of TYPE_KEYS){
+    if(isUnlocked(k)) unlocked.push(k);
+  }
+  if(unlocked.length===0) return 'ram';
+  // 全タイプ解放＋laser撃破10匹以上：全タイプから完全ランダム
+  const allUnlocked = unlocked.length === TYPE_KEYS.length;
+  if(allUnlocked && (state.killsByType['laser']||0) >= 10){
+    return unlocked[Math.floor(Math.random()*unlocked.length)];
+  }
+  // 最新ロット＝アンロック深さが最大のグループ
+  let maxDepth = 0;
+  for(const k of unlocked) if(unlockDepth(k) > maxDepth) maxDepth = unlockDepth(k);
+  const newest = unlocked.filter(k => unlockDepth(k) === maxDepth);
+  if(maxDepth === 0) return 'ram';
+  // 50%：最新ロット、50%：全解放タイプ等確率
+  if(Math.random() < 0.5){
+    return newest[Math.floor(Math.random()*newest.length)];
+  } else {
+    return unlocked[Math.floor(Math.random()*unlocked.length)];
+  }
+}
+function previousUnlockedSet(){
+  const set=new Set();
+  for(const k of TYPE_KEYS){
+    if(isUnlocked(k)) set.add(k);
+  }
+  return set;
+}
+
+//==============================================================
+// PLAYER
+//==============================================================
+function makePlayer(){
+  return {
+    x:0, y:-200, dir:6, angle:-Math.PI/2,
+    speed:CFG.PLAYER_SPEED, trail:[], segments:[],
+    turnCool:0,
+    dashTimer: CFG.DASH_COOLDOWN, dashActive:false, dashRemaining:0,
+  };
+}
+
+//==============================================================
+// ENEMY
+//==============================================================
+function spawnEnemy(){
+  const type = chooseEnemyType();
+  const ang = Math.random()*Math.PI*2;
+  const r = CFG.WORLD_BOUND - 40;
+  const head = {x:Math.cos(ang)*r, y:Math.sin(ang)*r};
+  const toCore = Math.atan2(-head.y,-head.x);
+  // 体節長：そのタイプの撃破数+1（タイプ別カウント。ENEMY_MAX_LENGTH で頭打ち）
+  const killsOfType = state.killsByType[type] || 0;
+  const len = Math.min(CFG.ENEMY_MAX_LENGTH, killsOfType + 1);
+  const trail=[];
+  for(let i=0;i<len*CFG.SEG_SPACING+4;i++){
+    trail.push({x:head.x-Math.cos(toCore)*i, y:head.y-Math.sin(toCore)*i});
+  }
+  const segs=[];
+  for(let i=0;i<len;i++) segs.push({hp:CFG.SEG_HP});
+  const e={
+    x:head.x, y:head.y, angle:toCore, speed:CFG.ENEMY_SPEED,
+    trail, segments:segs, dead:false, explodeTimer:0,
+    type, abilityTimer: Math.random()*120 + 240, // 初回発動まで4〜6秒の余裕
+    laserState:'idle', laserTimer:0, laserAngle:0, laserDur:0,
+    dashTimer: Math.random()*300+100, dashActive:false, dashRemaining:0,
+  };
+  // typeに応じて固有タイマー初期化
+  if(type==='orb'){
+    // 2個のオーブを生成
+    for(let k=0;k<2;k++){
+      state.orbs.push({ownerType:'enemy',ownerRef:e,angle:k*Math.PI,radius:50});
+    }
+  }
+  state.enemies.push(e);
+}
+
+//==============================================================
+// DEBRIS
+//==============================================================
+function spawnDebris(x,y,angle,owner,sourceType){
+  if(state.debris.length>=CFG.DEBRIS_MAX) return;
+  state.debris.push({x,y,
+    vx:Math.cos(angle)*CFG.DEBRIS_SPEED,
+    vy:Math.sin(angle)*CFG.DEBRIS_SPEED,
+    life:0, owner:owner||'enemy',
+    sourceType: sourceType || 'pellet'});
+}
+
+//==============================================================
+// MINES / LASERS / HOMING / ORBS / MINIONS / EFFECTS
+//==============================================================
+function spawnMine(x,y,owner){
+  if(state.mines.length>=CFG.MINE_MAX) return;
+  state.mines.push({x,y,owner,life:0});
+  Audio.sfx('mine_set');
+}
+function spawnLaser(originRef, angle, owner){
+  if(state.lasers.length>=CFG.LASER_MAX) return;
+  state.lasers.push({
+    ownerType:owner,
+    ownerRef:originRef,
+    angle, state:'warn', timer:CFG.LASER_WARN,
+  });
+  Audio.sfx('laser_warn');
+}
+function spawnHoming(x,y, target, owner){
+  if(state.homingMissiles.length>=CFG.HOMING_MAX) return;
+  state.homingMissiles.push({
+    x,y, vx:0, vy:0, owner, target, life:0
+  });
+  Audio.sfx('shoot');
+}
+function spawnMinion(x,y, owner){
+  if(state.minions.length>=CFG.MINION_MAX) return;
+  state.minions.push({
+    x,y, angle:Math.random()*Math.PI*2, owner,
+    trail:[{x,y},{x,y}], segments:[{hp:2}], hp:2,
+    speed: 1.2, life:0,
+    abilityTimer: CFG.SUMMON_INTERVAL + Math.random()*120, // 初回発動の余裕
+  });
+}
+
+//==============================================================
+// STARS
+//==============================================================
+function makeStars(){
+  state.stars=[];
+  for(let i=0;i<160;i++){
+    state.stars.push({
+      x:(Math.random()*2-1)*CFG.WORLD_BOUND*1.4,
+      y:(Math.random()*2-1)*CFG.WORLD_BOUND*1.4,
+      r:Math.random()*1.2+0.2, tw:Math.random()*Math.PI*2
+    });
+  }
+}
+
+//==============================================================
+// RESET
+//==============================================================
+function resetGame(){
+  state.running=true; state.over=false;
+  state.frame=0; state.time=0; state.score=0; state.killCount=0;
+  state.killsByType={};
+  state.enemies=[]; state.debris=[]; state.particles=[]; state.mines=[];
+  state.lasers=[]; state.homingMissiles=[]; state.orbs=[]; state.minions=[];
+  state.spawnTimer=60;
+  state.coreHp=CFG.CORE_HP; state.coreFlash=0; state.coreHealFlash=0;
+  // HUDのコアHP上限表示も更新
+  const coreEl=document.getElementById('core');
+  if(coreEl && coreEl.nextSibling) coreEl.nextSibling.textContent = ` / ${CFG.CORE_HP}`;
+  state.viewScale=1.0;
+  state.player=makePlayer();
+  const p=state.player;
+  for(let i=0;i<200;i++) p.trail.push({x:p.x,y:p.y+i});
+  makeStars();
+  updateBuildUI();
+  updateUnlockUI();
+}
+
+//==============================================================
+// INPUT
+//==============================================================
+const keys={};
+window.addEventListener('keydown',e=>{
+  const k=e.key.toLowerCase();
+  keys[k]=true;
+  if(!e.repeat && state.running && !state.over && state.player){
+    const p=state.player;
+    if(p.turnCool<=0){
+      if(e.key==='ArrowLeft'||k==='a'){
+        p.dir=(p.dir+7)%8; p.angle=p.dir*Math.PI/4;
+        p.turnCool=CFG.TURN_COOLDOWN; Audio.sfx('turn');
+      } else if(e.key==='ArrowRight'||k==='d'){
+        p.dir=(p.dir+1)%8; p.angle=p.dir*Math.PI/4;
+        p.turnCool=CFG.TURN_COOLDOWN; Audio.sfx('turn');
+      }
+    }
+  }
+});
+window.addEventListener('keyup',e=>{ keys[e.key.toLowerCase()]=false; });
+
+//==============================================================
+// TOUCH INPUT (モバイル：画面左右半分タップ/ホールドで回転)
+//==============================================================
+const activeTouches = new Map(); // identifier -> 'left' | 'right'
+function syncKeysFromTouches(){
+  let l=false, r=false;
+  for(const side of activeTouches.values()){
+    if(side==='left') l=true; else r=true;
+  }
+  keys['arrowleft'] = l;
+  keys['arrowright'] = r;
+}
+function classifyTouch(t){
+  return t.clientX < window.innerWidth/2 ? 'left' : 'right';
+}
+function handleTouchStart(e){
+  e.preventDefault();
+  document.body.classList.add('touch');
+  for(const t of e.changedTouches){
+    activeTouches.set(t.identifier, classifyTouch(t));
+  }
+  syncKeysFromTouches();
+  // 初回タッチで Audio 初期化（START画面外のタッチでも安全に）
+  if(Audio.ctx) Audio.resume();
+}
+function handleTouchMove(e){
+  e.preventDefault();
+  for(const t of e.changedTouches){
+    activeTouches.set(t.identifier, classifyTouch(t));
+  }
+  syncKeysFromTouches();
+}
+function handleTouchEnd(e){
+  e.preventDefault();
+  for(const t of e.changedTouches){
+    activeTouches.delete(t.identifier);
+  }
+  syncKeysFromTouches();
+}
+canvas.addEventListener('touchstart', handleTouchStart, {passive:false});
+canvas.addEventListener('touchmove',  handleTouchMove,  {passive:false});
+canvas.addEventListener('touchend',   handleTouchEnd,   {passive:false});
+canvas.addEventListener('touchcancel',handleTouchEnd,   {passive:false});
+// ダブルタップズーム抑制
+document.addEventListener('gesturestart',e=>e.preventDefault());
+
+//==============================================================
+// PLAYER UPDATE
+//==============================================================
+function updatePlayer(){
+  const p=state.player; if(!p) return;
+  if(p.turnCool>0) p.turnCool--;
+  // 押しっぱなし回転
+  if(p.turnCool<=0){
+    const left=keys['arrowleft']||keys['a'];
+    const right=keys['arrowright']||keys['d'];
+    if(left&&!right){
+      p.dir=(p.dir+7)%8; p.angle=p.dir*Math.PI/4;
+      p.turnCool=CFG.TURN_COOLDOWN; Audio.sfx('turn');
+    } else if(right&&!left){
+      p.dir=(p.dir+1)%8; p.angle=p.dir*Math.PI/4;
+      p.turnCool=CFG.TURN_COOLDOWN; Audio.sfx('turn');
+    }
+  }
+  // ダッシュ判定（dash節があれば自動）
+  const hasDash = p.segments.some(s=>s.type==='dash');
+  if(hasDash){
+    if(p.dashActive){
+      p.dashRemaining--;
+      if(p.dashRemaining<=0){
+        p.dashActive=false;
+        p.dashTimer=CFG.DASH_COOLDOWN;
+      }
+    } else {
+      p.dashTimer--;
+      if(p.dashTimer<=0){
+        p.dashActive=true; p.dashRemaining=CFG.DASH_DURATION;
+        Audio.sfx('dash');
+        burst(p.x,p.y,'#fc8',24,5);
+      }
+    }
+  } else {
+    p.dashActive=false;
+  }
+  const speed = p.dashActive ? CFG.PLAYER_DASH_SPEED : CFG.PLAYER_SPEED;
+  // 移動
+  p.x+=Math.cos(p.angle)*speed;
+  p.y+=Math.sin(p.angle)*speed;
+  // trail
+  p.trail.unshift({x:p.x,y:p.y});
+  const needed=p.segments.length*CFG.SEG_SPACING+8;
+  if(p.trail.length>needed) p.trail.length=needed;
+
+  // 頭 vs コア → 常に反射のみ、ダメージなし（ダッシュ中も同じ）
+  const d2=p.x*p.x+p.y*p.y;
+  const rsum=CFG.CORE_RADIUS+CFG.HEAD_RADIUS;
+  if(d2<rsum*rsum){
+    const nn=Math.hypot(p.x,p.y)||1; const nx=p.x/nn, ny=p.y/nn;
+    const vx=Math.cos(p.angle),vy=Math.sin(p.angle);
+    const dot=vx*nx+vy*ny;
+    p.dir=nearestDir(vx-2*dot*nx, vy-2*dot*ny);
+    p.angle=p.dir*Math.PI/4;
+    p.x=nx*(CFG.CORE_RADIUS+CFG.HEAD_RADIUS+2);
+    p.y=ny*(CFG.CORE_RADIUS+CFG.HEAD_RADIUS+2);
+    burst(p.x,p.y,'#cff',8,2.5);
+    Audio.sfx('bounce');
+  }
+
+  // 頭 vs 敵体節
+  for(const e of state.enemies){
+    if(e.dead) continue;
+    for(let i=e.segments.length-1;i>=0;i--){
+      const tp=e.trail[(i+1)*CFG.SEG_SPACING]; if(!tp) continue;
+      const r=CFG.HEAD_RADIUS+CFG.ENEMY_SEG_RADIUS;
+      if(dist2(p.x,p.y,tp.x,tp.y)<r*r){
+        breakEnemySegment(e,i,tp.x,tp.y);
+      }
+    }
+  }
+  // 頭 vs 敵頭
+  for(const e of state.enemies){
+    if(e.dead) continue;
+    const r=CFG.HEAD_RADIUS+CFG.ENEMY_HEAD_RADIUS;
+    if(dist2(p.x,p.y,e.x,e.y)<r*r){
+      if(p.dashActive){
+        // ダッシュ中：敵全消滅（後ろから連鎖爆発）
+        killEnemyChainExplode(e);
+      } else {
+        // 通常：両方反発（体節無敵）
+        const ang=Math.atan2(p.y-e.y,p.x-e.x);
+        p.x=e.x+Math.cos(ang)*r*1.05; p.y=e.y+Math.sin(ang)*r*1.05;
+        burst(p.x,p.y,'#cff',8,2.5);
+        Audio.sfx('bounce');
+      }
+    }
+  }
+  // 頭 vs デブリ（体節無敵化により、頭は弾くだけ）
+  for(let i=state.debris.length-1;i>=0;i--){
+    const d=state.debris[i];
+    const r=CFG.HEAD_RADIUS+CFG.DEBRIS_RADIUS;
+    if(dist2(p.x,p.y,d.x,d.y)<r*r){
+      state.debris.splice(i,1);
+      burst(p.x,p.y, d.owner==='player'?'#7cf':'#fc8',5,1.8);
+      Audio.sfx('bounce');
+    }
+  }
+  // 頭 vs 地雷
+  for(let i=state.mines.length-1;i>=0;i--){
+    const m=state.mines[i];
+    if(m.owner==='player') continue; // 自分の地雷は無視
+    const r=CFG.HEAD_RADIUS+CFG.MINE_RADIUS;
+    if(dist2(p.x,p.y,m.x,m.y)<r*r){
+      explodeMine(m,i);
+    }
+  }
+  // 頭 vs ホーミング弾
+  for(let i=state.homingMissiles.length-1;i>=0;i--){
+    const h=state.homingMissiles[i];
+    if(h.owner==='player') continue;
+    const r=CFG.HEAD_RADIUS+CFG.HOMING_RADIUS;
+    if(dist2(p.x,p.y,h.x,h.y)<r*r){
+      explodeHoming(h,i);
+    }
+  }
+}
+
+//==============================================================
+// ENEMY UPDATE
+//==============================================================
+function updateEnemies(){
+  for(const e of state.enemies){
+    if(e.dead){ e.explodeTimer--; continue; }
+    // AI: 引力（コア）+ 斥力（プレイヤー頭、デブリ、プレイヤー体節）
+    let ax=-e.x, ay=-e.y;
+    const dn=Math.hypot(ax,ay)||1; ax/=dn; ay/=dn;
+    const p=state.player;
+    if(p){
+      const dx=e.x-p.x, dy=e.y-p.y; const dd=Math.hypot(dx,dy);
+      if(dd<240){ const s=(240-dd)/240; ax+=(dx/(dd||1))*s*2.4; ay+=(dy/(dd||1))*s*2.4; }
+      for(let i=0;i<p.segments.length;i++){
+        const tp=p.trail[(i+1)*CFG.SEG_SPACING]; if(!tp) continue;
+        const dx2=e.x-tp.x, dy2=e.y-tp.y; const dd2=Math.hypot(dx2,dy2);
+        if(dd2<90&&dd2>0){ const s2=(90-dd2)/90; ax+=(dx2/dd2)*s2*0.8; ay+=(dy2/dd2)*s2*0.8; }
+      }
+    }
+    for(const db of state.debris){
+      const dx=e.x-db.x, dy=e.y-db.y; const dd=Math.hypot(dx,dy);
+      if(dd<80&&dd>0){ const s=(80-dd)/80; ax+=(dx/dd)*s*1.2; ay+=(dy/dd)*s*1.2; }
+    }
+    const target=Math.atan2(ay,ax);
+    let diff=target-e.angle;
+    while(diff>Math.PI) diff-=Math.PI*2;
+    while(diff<-Math.PI) diff+=Math.PI*2;
+    e.angle+=Math.max(-0.06,Math.min(0.06,diff));
+
+    // dashタイプ：周期的にダッシュ
+    let speed = e.speed;
+    if(e.type==='dash'){
+      if(e.dashActive){
+        e.dashRemaining--;
+        if(e.dashRemaining<=0){ e.dashActive=false; e.dashTimer=CFG.DASH_COOLDOWN; }
+        speed = CFG.ENEMY_DASH_SPEED;
+      } else {
+        e.dashTimer--;
+        if(e.dashTimer<=0){ e.dashActive=true; e.dashRemaining=CFG.DASH_DURATION; Audio.sfx('dash'); }
+      }
+    }
+
+    e.x+=Math.cos(e.angle)*speed;
+    e.y+=Math.sin(e.angle)*speed;
+    e.trail.unshift({x:e.x,y:e.y});
+    const needed=e.segments.length*CFG.SEG_SPACING+8;
+    if(e.trail.length>needed) e.trail.length=needed;
+
+    // 能力タイマー
+    e.abilityTimer--;
+    if(e.abilityTimer<=0){
+      enemyUseAbility(e);
+    }
+
+    // 敵頭 vs コア → コアに「これまで倒した数」分のダメージ、敵全体消滅
+    const d2c=e.x*e.x+e.y*e.y;
+    const rsum=CFG.CORE_RADIUS+CFG.ENEMY_HEAD_RADIUS;
+    if(d2c<rsum*rsum){
+      const ang=Math.atan2(e.y,e.x);
+      for(let k=0;k<3;k++) spawnDebris(e.x,e.y,ang+(Math.random()-0.5)*0.7,'enemy');
+      burst(e.x,e.y,'#f86',40,6); burst(e.x,e.y,'#fc6',30,4);
+      Audio.sfx('explode');
+      const dmg = Math.max(1, state.killCount); // 総撃破数（最小1）
+      e.dead=true; e.explodeTimer=18;
+      damageCore(dmg, e.x, e.y);
+      continue;
+    }
+    // 敵体節 vs コア
+    let bodyHitCore=false;
+    for(let i=0;i<e.segments.length;i++){
+      const tp=e.trail[(i+1)*CFG.SEG_SPACING]; if(!tp) continue;
+      const dd=tp.x*tp.x+tp.y*tp.y;
+      const r2=CFG.CORE_RADIUS+CFG.ENEMY_SEG_RADIUS;
+      if(dd<r2*r2){
+        const ang=Math.atan2(tp.y,tp.x);
+        spawnDebris(tp.x,tp.y,ang+(Math.random()-0.5)*0.4,'enemy');
+        burst(tp.x,tp.y,'#f86',14,3);
+        e.segments.splice(i,1);
+        damageCore(1,tp.x,tp.y);
+        Audio.sfx('break');
+        if(e.segments.length===0){
+          e.dead=true; e.explodeTimer=18;
+          burst(e.x,e.y,'#f86',40,6); Audio.sfx('explode');
+        }
+        bodyHitCore=true; break;
+      }
+    }
+    if(bodyHitCore&&e.dead) continue;
+
+    // 体節 vs プレイヤー体節（プレイヤー側は無敵、敵側だけ破壊）
+    if(p){
+      for(let i=e.segments.length-1;i>=0;i--){
+        const ep=e.trail[(i+1)*CFG.SEG_SPACING]; if(!ep) continue;
+        for(let j=p.segments.length-1;j>=0;j--){
+          const pp=p.trail[(j+1)*CFG.SEG_SPACING]; if(!pp) continue;
+          const rr=CFG.SEG_RADIUS+CFG.ENEMY_SEG_RADIUS;
+          if(dist2(ep.x,ep.y,pp.x,pp.y)<rr*rr){
+            breakEnemySegment(e,i,ep.x,ep.y);
+            break;
+          }
+        }
+      }
+    }
+  }
+  state.enemies=state.enemies.filter(e=>!(e.dead&&e.explodeTimer<=0));
+}
+
+//==============================================================
+// ENEMY ABILITIES
+//==============================================================
+function enemyUseAbility(e){
+  switch(e.type){
+    case 'pellet': {
+      // コア狙い
+      const ang = Math.atan2(-e.y, -e.x);
+      spawnDebris(e.x,e.y,ang,'enemy','pellet');
+      Audio.sfx('shoot');
+      e.abilityTimer = CFG.PELLET_INTERVAL;
+      break;
+    }
+    case 'mine': {
+      // 体節の場所に置く（ランダムな1節）
+      if(e.segments.length>0){
+        const i = Math.floor(Math.random()*e.segments.length);
+        const tp = e.trail[(i+1)*CFG.SEG_SPACING];
+        if(tp) spawnMine(tp.x,tp.y,'enemy');
+      }
+      e.abilityTimer = CFG.MINE_INTERVAL;
+      break;
+    }
+    case 'laser': {
+      // コア狙い
+      const ang = Math.atan2(-e.y, -e.x);
+      spawnLaser(e, ang, 'enemy');
+      e.abilityTimer = CFG.LASER_INTERVAL;
+      break;
+    }
+    case 'homing': {
+      // コア追尾
+      spawnHoming(e.x, e.y, {x:0, y:0}, 'enemy');
+      e.abilityTimer = CFG.HOMING_INTERVAL;
+      break;
+    }
+    case 'summon': {
+      // ミニ召喚（コア方向）
+      const ang = Math.atan2(-e.y, -e.x);
+      spawnMinion(e.x+Math.cos(ang)*20, e.y+Math.sin(ang)*20, 'enemy');
+      Audio.sfx('shoot');
+      e.abilityTimer = CFG.SUMMON_INTERVAL;
+      break;
+    }
+    default:
+      e.abilityTimer = 600;
+  }
+}
+
+//==============================================================
+// PLAYER ABILITIES (味方化体節)
+//==============================================================
+function updatePlayerAbilities(){
+  const p = state.player; if(!p) return;
+  for(let i=0;i<p.segments.length;i++){
+    const s = p.segments[i];
+    const t = s.type;
+    if(!t || t==='ram' || t==='dash') continue;
+    if(s.abilityTimer===undefined) s.abilityTimer = Math.random()*120+60;
+    s.abilityTimer--;
+    if(s.abilityTimer>0) continue;
+    const tp = p.trail[(i+1)*CFG.SEG_SPACING];
+    const px = tp?tp.x:p.x, py = tp?tp.y:p.y;
+    const target = findNearestEnemyFrom(px,py);
+    switch(t){
+      case 'pellet': {
+        if(target){
+          const ang = Math.atan2(target.y-py, target.x-px);
+          spawnDebris(px,py,ang,'player');
+          Audio.sfx('shoot');
+        }
+        s.abilityTimer = CFG.PELLET_INTERVAL;
+        break;
+      }
+      case 'mine': {
+        spawnMine(px,py,'player');
+        s.abilityTimer = CFG.MINE_INTERVAL;
+        break;
+      }
+      case 'laser': {
+        if(target){
+          const ang = Math.atan2(target.y-py, target.x-px);
+          spawnLaser({x:px,y:py,fromSeg:true,segIndex:i,owner:'player'}, ang, 'player');
+        }
+        s.abilityTimer = CFG.LASER_INTERVAL;
+        break;
+      }
+      case 'homing': {
+        if(target){
+          spawnHoming(px,py,target,'player');
+        }
+        s.abilityTimer = CFG.HOMING_INTERVAL;
+        break;
+      }
+      case 'summon': {
+        spawnMinion(px,py,'player');
+        Audio.sfx('shoot');
+        s.abilityTimer = CFG.SUMMON_INTERVAL;
+        break;
+      }
+      case 'orb': {
+        // 該当節そのものの周りを回るオーブを保持
+        const has = state.orbs.some(o=>o.ownerType==='player'&&o.segIndex===i);
+        if(!has){
+          state.orbs.push({ownerType:'player', segIndex:i,
+            angle:Math.random()*Math.PI*2, radius:CFG.ORB_RADIUS_FROM_SEG});
+        }
+        s.abilityTimer = 60;
+        break;
+      }
+    }
+  }
+}
+
+//==============================================================
+// MINES UPDATE
+//==============================================================
+function updateMines(){
+  for(let i=state.mines.length-1;i>=0;i--){
+    const m=state.mines[i]; m.life++;
+    // プレイヤー側地雷：敵に当たると爆発、自分（プレイヤー＆ミニ）は無視
+    // 敵側地雷：プレイヤー（頭＆体節＆ミニ）に当たると爆発、敵同士は無視
+    let triggered=false;
+    if(m.owner==='enemy'){
+      const p=state.player;
+      if(p){
+        // 頭
+        if(dist2(p.x,p.y,m.x,m.y)<(CFG.HEAD_RADIUS+CFG.MINE_RADIUS)**2){ triggered=true; }
+        // 体節
+        if(!triggered){
+          for(let j=0;j<p.segments.length;j++){
+            const tp=p.trail[(j+1)*CFG.SEG_SPACING]; if(!tp) continue;
+            if(dist2(tp.x,tp.y,m.x,m.y)<(CFG.SEG_RADIUS+CFG.MINE_RADIUS)**2){ triggered=true; break; }
+          }
+        }
+      }
+      // 味方ミニも踏める
+      if(!triggered){
+        for(const mn of state.minions){
+          if(mn.owner!=='player') continue;
+          if(dist2(mn.x,mn.y,m.x,m.y)<(8+CFG.MINE_RADIUS)**2){ triggered=true; break; }
+        }
+      }
+    } else if(m.owner==='player'){
+      // 敵
+      for(const e of state.enemies){
+        if(e.dead) continue;
+        // 敵頭
+        if(dist2(e.x,e.y,m.x,m.y)<(CFG.ENEMY_HEAD_RADIUS+CFG.MINE_RADIUS)**2){ triggered=true; break; }
+        // 敵体節
+        for(let j=0;j<e.segments.length;j++){
+          const tp=e.trail[(j+1)*CFG.SEG_SPACING]; if(!tp) continue;
+          if(dist2(tp.x,tp.y,m.x,m.y)<(CFG.ENEMY_SEG_RADIUS+CFG.MINE_RADIUS)**2){ triggered=true; break; }
+        }
+        if(triggered) break;
+      }
+      // 敵ミニ
+      if(!triggered){
+        for(const mn of state.minions){
+          if(mn.owner!=='enemy') continue;
+          if(dist2(mn.x,mn.y,m.x,m.y)<(8+CFG.MINE_RADIUS)**2){ triggered=true; break; }
+        }
+      }
+    }
+    if(triggered) explodeMine(m,i);
+  }
+}
+function explodeMine(m, idx){
+  state.mines.splice(idx,1);
+  burst(m.x,m.y, m.owner==='player'?'#9cf':'#fc6', 30, 5);
+  Audio.sfx('explode');
+  const R = CFG.MINE_RADIUS_EXPLODE;
+  // 範囲内のターゲットを1節破壊
+  if(m.owner==='enemy'){
+    // 爆発範囲内にコアがあればダメージ（mine撃破数に応じて）
+    if(dist2(m.x,m.y,0,0) < R*R){
+      damageCore(abilityDamage('mine'), 0, 0);
+    }
+    // プレイヤー体節は無敵
+    // 味方ミニは消滅
+    for(let j=state.minions.length-1;j>=0;j--){
+      const mn=state.minions[j]; if(mn.owner!=='player') continue;
+      if(dist2(mn.x,mn.y,m.x,m.y)<R*R){
+        burst(mn.x,mn.y,'#fff',12,3);
+        state.minions.splice(j,1);
+      }
+    }
+  } else if(m.owner==='player'){
+    // 範囲内で最も近い1節だけ破壊（1ダメージ）
+    let nearest=null, nd=Infinity;
+    for(const e of state.enemies){
+      if(e.dead) continue;
+      for(let j=e.segments.length-1;j>=0;j--){
+        const tp=e.trail[(j+1)*CFG.SEG_SPACING]; if(!tp) continue;
+        const d=dist2(tp.x,tp.y,m.x,m.y);
+        if(d<R*R && d<nd){ nd=d; nearest={e,j,tp}; }
+      }
+    }
+    if(nearest){
+      breakEnemySegment(nearest.e, nearest.j, nearest.tp.x, nearest.tp.y);
+    } else {
+      // 敵節がなければミニを1体だけ
+      for(let j=state.minions.length-1;j>=0;j--){
+        const mn=state.minions[j]; if(mn.owner!=='enemy') continue;
+        if(dist2(mn.x,mn.y,m.x,m.y)<R*R){
+          burst(mn.x,mn.y,'#f86',12,3);
+          state.minions.splice(j,1);
+          break;
+        }
+      }
+    }
+  }
+}
+
+//==============================================================
+// LASERS UPDATE
+//==============================================================
+function updateLasers(){
+  for(let i=state.lasers.length-1;i>=0;i--){
+    const L=state.lasers[i];
+    L.timer--;
+    // 起点
+    let ox, oy;
+    if(L.ownerType==='enemy'){
+      const e=L.ownerRef;
+      if(!e||e.dead){ state.lasers.splice(i,1); continue; }
+      ox=e.x; oy=e.y;
+      // 敵側はコア狙い固定（移動中の角度補正）
+      if(L.state==='warn'){
+        L.angle = Math.atan2(-e.y, -e.x);
+      }
+    } else {
+      // player体節由来
+      const p=state.player;
+      const idx=L.ownerRef.segIndex;
+      if(!p || idx>=p.segments.length){ state.lasers.splice(i,1); continue; }
+      const tp = p.trail[(idx+1)*CFG.SEG_SPACING];
+      if(!tp){ state.lasers.splice(i,1); continue; }
+      ox = tp.x; oy = tp.y;
+      if(L.state==='warn'){
+        const tgt = findNearestEnemyFrom(ox,oy);
+        if(tgt) L.angle = Math.atan2(tgt.y-oy, tgt.x-ox);
+      }
+    }
+    L.ox = ox; L.oy = oy;
+    if(L.state==='warn' && L.timer<=0){
+      L.state='fire'; L.timer=CFG.LASER_FIRE;
+      Audio.sfx('laser_fire');
+    } else if(L.state==='fire'){
+      // 当たり判定（毎フレーム）
+      laserHitCheck(L);
+      if(L.timer<=0){ state.lasers.splice(i,1); }
+    }
+  }
+}
+function laserHitCheck(L){
+  const dx=Math.cos(L.angle), dy=Math.sin(L.angle);
+  const maxLen = CFG.WORLD_BOUND*2;
+  const hw = CFG.LASER_HALF_WIDTH;
+  function isOnLine(x,y,r){
+    // 点が線分(ox,oy)→(ox+dx*L, oy+dy*L) からhw+r以内か
+    const lx = x - L.ox, ly = y - L.oy;
+    const t = lx*dx + ly*dy;
+    if(t<0||t>maxLen) return false;
+    const px = L.ox + dx*t, py = L.oy + dy*t;
+    return dist2(x,y,px,py) < (hw+r)*(hw+r);
+  }
+  if(L.ownerType==='enemy'){
+    // プレイヤー体節は無敵（レーザー触れてもノーダメージ）
+    // コア（laser撃破数に応じてダメージ、1発につき1回だけ）
+    if(isOnLine(0,0,CFG.CORE_RADIUS)){
+      if(!L.coreHit){ damageCore(abilityDamage('laser'),0,0); L.coreHit=true; }
+    }
+    // ミニ
+    for(let j=state.minions.length-1;j>=0;j--){
+      const mn=state.minions[j]; if(mn.owner!=='player') continue;
+      if(isOnLine(mn.x,mn.y,8)){
+        burst(mn.x,mn.y,'#fff',10,3);
+        state.minions.splice(j,1);
+      }
+    }
+  } else if(L.ownerType==='player'){
+    // 一定間隔で「ライン上の敵のお尻から1節」を破壊（徐々に削る）
+    if(L.tickTimer===undefined) L.tickTimer = 0;
+    L.tickTimer--;
+    if(L.tickTimer<=0){
+      L.tickTimer = 4; // 4フレームに1節（1秒で約15節）
+      let target = null;
+      for(const e of state.enemies){
+        if(e.dead) continue;
+        // 最後尾(idx=length-1)から見て、ライン上の最初の節を選ぶ
+        for(let j=e.segments.length-1;j>=0;j--){
+          const tp=e.trail[(j+1)*CFG.SEG_SPACING]; if(!tp) continue;
+          if(isOnLine(tp.x,tp.y,CFG.ENEMY_SEG_RADIUS)){
+            target = {enemy:e, idx:j, tp};
+            break;
+          }
+        }
+        if(target) break;
+      }
+      if(target){
+        breakEnemySegment(target.enemy, target.idx, target.tp.x, target.tp.y);
+      } else {
+        for(let j=state.minions.length-1;j>=0;j--){
+          const mn=state.minions[j]; if(mn.owner!=='enemy') continue;
+          if(isOnLine(mn.x,mn.y,8)){
+            burst(mn.x,mn.y,'#f86',10,3);
+            state.minions.splice(j,1);
+            break;
+          }
+        }
+      }
+    }
+  }
+}
+
+//==============================================================
+// HOMING MISSILES UPDATE
+//==============================================================
+function updateHomingMissiles(){
+  for(let i=state.homingMissiles.length-1;i>=0;i--){
+    const h=state.homingMissiles[i]; h.life++;
+    // target追尾＋斥力（敵側はプレイヤー体節を避けて蛇行）
+    if(h.target){
+      let tx,ty;
+      if(h.target.x!==undefined){ tx=h.target.x; ty=h.target.y; }
+      else { tx=0; ty=0; }
+      // 引力
+      let ax = tx - h.x, ay = ty - h.y;
+      const an = Math.hypot(ax,ay)||1; ax/=an; ay/=an;
+      // 敵側ホーミングはプレイヤー体節を避ける
+      if(h.owner === 'enemy'){
+        const p = state.player;
+        if(p){
+          for(let s=0; s<p.segments.length; s++){
+            const tp = p.trail[(s+1)*CFG.SEG_SPACING]; if(!tp) continue;
+            const dx = h.x-tp.x, dy = h.y-tp.y;
+            const dd = Math.hypot(dx,dy);
+            if(dd<110 && dd>0){
+              const k = (110-dd)/110;
+              ax += (dx/dd)*k*2.8;
+              ay += (dy/dd)*k*2.8;
+            }
+          }
+          // プレイヤー頭も少し避ける
+          const dxh = h.x-p.x, dyh = h.y-p.y;
+          const ddh = Math.hypot(dxh,dyh);
+          if(ddh<80 && ddh>0){
+            const kh = (80-ddh)/80;
+            ax += (dxh/ddh)*kh*1.5;
+            ay += (dyh/ddh)*kh*1.5;
+          }
+        }
+      }
+      const nn = Math.hypot(ax,ay)||1; ax/=nn; ay/=nn;
+      const tvx = ax*CFG.HOMING_SPEED;
+      const tvy = ay*CFG.HOMING_SPEED;
+      h.vx += (tvx-h.vx)*0.08;
+      h.vy += (tvy-h.vy)*0.08;
+    }
+    h.x += h.vx; h.y += h.vy;
+    if(h.life>=CFG.HOMING_LIFE){ explodeHoming(h,i); continue; }
+    // 接触判定
+    if(h.owner==='enemy'){
+      // コア接触で爆発＋ダメージ（homing撃破数に応じて）
+      if(dist2(h.x,h.y,0,0) < (CFG.CORE_RADIUS+CFG.HOMING_RADIUS)**2){
+        damageCore(abilityDamage('homing'), h.x, h.y);
+        explodeHoming(h,i); continue;
+      }
+      const p=state.player;
+      // プレイヤー頭/体節と接触したら爆発（体節は無敵だが弾は消える）
+      if(p && dist2(p.x,p.y,h.x,h.y)<(CFG.HEAD_RADIUS+CFG.HOMING_RADIUS)**2){
+        explodeHoming(h,i); continue;
+      }
+      if(p){
+        let hit=false;
+        for(let j=0;j<p.segments.length;j++){
+          const tp=p.trail[(j+1)*CFG.SEG_SPACING]; if(!tp) continue;
+          if(dist2(tp.x,tp.y,h.x,h.y)<(CFG.SEG_RADIUS+CFG.HOMING_RADIUS)**2){
+            explodeHoming(h,i); hit=true; break;
+          }
+        }
+        if(hit) continue;
+      }
+    } else {
+      for(const e of state.enemies){
+        if(e.dead) continue;
+        if(dist2(e.x,e.y,h.x,h.y)<(CFG.ENEMY_HEAD_RADIUS+CFG.HOMING_RADIUS)**2){ explodeHoming(h,i); break; }
+        for(let j=0;j<e.segments.length;j++){
+          const tp=e.trail[(j+1)*CFG.SEG_SPACING]; if(!tp) continue;
+          if(dist2(tp.x,tp.y,h.x,h.y)<(CFG.ENEMY_SEG_RADIUS+CFG.HOMING_RADIUS)**2){
+            explodeHoming(h,i); break;
+          }
+        }
+      }
+    }
+  }
+}
+function explodeHoming(h, idx){
+  // idxはここで再取得（spliceで変化するため）
+  const realIdx = state.homingMissiles.indexOf(h);
+  if(realIdx>=0) state.homingMissiles.splice(realIdx,1);
+  const R = CFG.HOMING_BURST_RADIUS;
+  burst(h.x,h.y, h.owner==='player'?'#9cf':'#f6c', 30, 5);
+  Audio.sfx('explode');
+  // 範囲内の地雷を連鎖爆発（敵味方どちらの地雷も）
+  for(let mi=state.mines.length-1;mi>=0;mi--){
+    const m = state.mines[mi]; if(!m) continue;
+    if(dist2(m.x,m.y,h.x,h.y) < R*R){
+      explodeMine(m, mi);
+    }
+  }
+  if(h.owner==='enemy'){
+    // 爆発範囲内にコアがあれば追加ダメージ（寿命切れ時など、homing撃破数に応じて）
+    if(dist2(h.x,h.y,0,0) < R*R){
+      damageCore(abilityDamage('homing'), 0, 0);
+    }
+    // プレイヤー体節は無敵
+  } else {
+    // 範囲内で最も近い1節だけ破壊（1ダメージ）
+    let nearest=null, nd=Infinity;
+    for(const e of state.enemies){
+      if(e.dead) continue;
+      for(let j=e.segments.length-1;j>=0;j--){
+        const tp=e.trail[(j+1)*CFG.SEG_SPACING]; if(!tp) continue;
+        const d=dist2(tp.x,tp.y,h.x,h.y);
+        if(d<R*R && d<nd){ nd=d; nearest={e,j,tp}; }
+      }
+    }
+    if(nearest){
+      breakEnemySegment(nearest.e, nearest.j, nearest.tp.x, nearest.tp.y);
+    }
+  }
+}
+
+//==============================================================
+// ORBS UPDATE
+//==============================================================
+function updateOrbs(){
+  for(let i=state.orbs.length-1;i>=0;i--){
+    const o=state.orbs[i];
+    o.angle += CFG.ORB_ANGULAR_SPEED;
+    let cx,cy;
+    if(o.ownerType==='enemy'){
+      const e=o.ownerRef;
+      if(!e||e.dead){ state.orbs.splice(i,1); continue; }
+      cx=e.x; cy=e.y;
+      o.x = cx+Math.cos(o.angle)*o.radius;
+      o.y = cy+Math.sin(o.angle)*o.radius;
+      // プレイヤー体節は無敵（演出のみ）
+      const p=state.player;
+      if(p){
+        for(let j=p.segments.length-1;j>=0;j--){
+          const tp=p.trail[(j+1)*CFG.SEG_SPACING]; if(!tp) continue;
+          if(dist2(tp.x,tp.y,o.x,o.y)<(CFG.SEG_RADIUS+8)**2){
+            burst(tp.x,tp.y,'#cff',3,1.2);
+            break;
+          }
+        }
+      }
+    } else if(o.ownerType==='player'){
+      const p=state.player;
+      if(!p){ state.orbs.splice(i,1); continue; }
+      // 該当orb節の存在チェック
+      if(o.segIndex>=p.segments.length || p.segments[o.segIndex].type!=='orb'){
+        state.orbs.splice(i,1); continue;
+      }
+      const tp = p.trail[(o.segIndex+1)*CFG.SEG_SPACING];
+      if(!tp){ state.orbs.splice(i,1); continue; }
+      cx=tp.x; cy=tp.y;
+      o.x = cx+Math.cos(o.angle)*o.radius;
+      o.y = cy+Math.sin(o.angle)*o.radius;
+      // 敵との衝突
+      for(const e of state.enemies){
+        if(e.dead) continue;
+        for(let j=e.segments.length-1;j>=0;j--){
+          const tp=e.trail[(j+1)*CFG.SEG_SPACING]; if(!tp) continue;
+          if(dist2(tp.x,tp.y,o.x,o.y)<(CFG.ENEMY_SEG_RADIUS+8)**2){
+            breakEnemySegment(e,j,tp.x,tp.y);
+            break;
+          }
+        }
+      }
+    }
+  }
+}
+
+//==============================================================
+// MINIONS UPDATE
+//==============================================================
+function updateMinions(){
+  for(let i=state.minions.length-1;i>=0;i--){
+    const m=state.minions[i]; m.life++;
+    let tx, ty;
+    if(m.owner==='enemy'){
+      // コア狙い
+      tx=0; ty=0;
+    } else {
+      const t = findNearestEnemyFrom(m.x,m.y);
+      if(t){ tx=t.x; ty=t.y; }
+      else { tx=m.x+Math.cos(m.angle)*100; ty=m.y+Math.sin(m.angle)*100; }
+    }
+    const ang = Math.atan2(ty-m.y, tx-m.x);
+    let diff=ang-m.angle;
+    while(diff>Math.PI) diff-=Math.PI*2;
+    while(diff<-Math.PI) diff+=Math.PI*2;
+    m.angle += Math.max(-0.08,Math.min(0.08,diff));
+    m.x += Math.cos(m.angle)*m.speed;
+    m.y += Math.sin(m.angle)*m.speed;
+    m.trail.unshift({x:m.x,y:m.y});
+    if(m.trail.length>20) m.trail.length=20;
+
+    // ミニ自身もsummon可能（MINION_MAXで上限制御）
+    if(m.abilityTimer===undefined) m.abilityTimer = CFG.SUMMON_INTERVAL;
+    m.abilityTimer--;
+    if(m.abilityTimer<=0){
+      m.abilityTimer = CFG.SUMMON_INTERVAL;
+      spawnMinion(m.x, m.y, m.owner);
+    }
+
+    // ミニの衝突
+    if(m.owner==='enemy'){
+      // コア
+      if(dist2(m.x,m.y,0,0)<(CFG.CORE_RADIUS+8)**2){
+        damageCore(1,m.x,m.y);
+        burst(m.x,m.y,'#fff',12,3);
+        state.minions.splice(i,1); continue;
+      }
+      // プレイヤー頭
+      const p=state.player;
+      if(p && dist2(m.x,m.y,p.x,p.y)<(CFG.HEAD_RADIUS+8)**2){
+        // 体節無敵：ミニはぶつかったら消滅、プレイヤーは無傷
+        burst(m.x,m.y,'#fff',12,3);
+        state.minions.splice(i,1); continue;
+      }
+    } else {
+      // 敵に当たると消滅＆敵体節1つ破壊
+      for(const e of state.enemies){
+        if(e.dead) continue;
+        if(dist2(m.x,m.y,e.x,e.y)<(CFG.ENEMY_HEAD_RADIUS+8)**2){
+          state.minions.splice(i,1);
+          burst(m.x,m.y,'#fff',12,3);
+          // 敵の最後尾節を破壊
+          if(e.segments.length>0){
+            const j=e.segments.length-1;
+            const tp=e.trail[(j+1)*CFG.SEG_SPACING];
+            if(tp) breakEnemySegment(e,j,tp.x,tp.y);
+          }
+          break;
+        }
+        let hit=false;
+        for(let j=e.segments.length-1;j>=0;j--){
+          const tp=e.trail[(j+1)*CFG.SEG_SPACING]; if(!tp) continue;
+          if(dist2(m.x,m.y,tp.x,tp.y)<(CFG.ENEMY_SEG_RADIUS+8)**2){
+            breakEnemySegment(e,j,tp.x,tp.y);
+            state.minions.splice(i,1);
+            burst(m.x,m.y,'#fff',12,3);
+            hit=true; break;
+          }
+        }
+        if(hit) break;
+      }
+    }
+  }
+}
+
+//==============================================================
+// DEBRIS UPDATE
+//==============================================================
+function updateDebris(){
+  const p=state.player;
+  for(let i=state.debris.length-1;i>=0;i--){
+    const d=state.debris[i]; d.x+=d.vx; d.y+=d.vy; d.life++;
+    // コア
+    const r0=CFG.CORE_RADIUS+CFG.DEBRIS_RADIUS;
+    if(d.x*d.x+d.y*d.y<r0*r0){
+      const nn=Math.hypot(d.x,d.y)||1; const nx=d.x/nn, ny=d.y/nn;
+      reflect(d,nx,ny);
+      d.x=nx*(CFG.CORE_RADIUS+CFG.DEBRIS_RADIUS+2);
+      d.y=ny*(CFG.CORE_RADIUS+CFG.DEBRIS_RADIUS+2);
+      if(d.owner!=='player') damageCore(abilityDamage(d.sourceType||'pellet'), d.x, d.y);
+      Audio.sfx('bounce'); continue;
+    }
+    // プレイヤー体節（無敵：反射のみ、hp減らさない）
+    let handled=false;
+    if(p){
+      for(let j=0;j<p.segments.length;j++){
+        const tp=p.trail[(j+1)*CFG.SEG_SPACING]; if(!tp) continue;
+        const rr=CFG.SEG_RADIUS+CFG.DEBRIS_RADIUS;
+        if(dist2(d.x,d.y,tp.x,tp.y)<rr*rr){
+          let nx=d.x-tp.x, ny=d.y-tp.y; const nn=Math.hypot(nx,ny)||1; nx/=nn; ny/=nn;
+          reflect(d,nx,ny); d.x=tp.x+nx*rr*1.02; d.y=tp.y+ny*rr*1.02;
+          burst(tp.x,tp.y, d.owner==='player'?'#7cf':'#fc8',3,1.4);
+          Audio.sfx('bounce');
+          handled=true; break;
+        }
+      }
+    }
+    if(handled) continue;
+    // 敵体節：触れたら即破壊（耐久なし）
+    let done=false;
+    for(const e of state.enemies){
+      if(e.dead) continue;
+      for(let i2=e.segments.length-1;i2>=0;i2--){
+        const tp=e.trail[(i2+1)*CFG.SEG_SPACING]; if(!tp) continue;
+        const rr=CFG.ENEMY_SEG_RADIUS+CFG.DEBRIS_RADIUS;
+        if(dist2(d.x,d.y,tp.x,tp.y)<rr*rr){
+          // 反射してから破壊
+          let nx=d.x-tp.x, ny=d.y-tp.y; const nn=Math.hypot(nx,ny)||1; nx/=nn; ny/=nn;
+          reflect(d,nx,ny); d.x=tp.x+nx*rr*1.02; d.y=tp.y+ny*rr*1.02;
+          breakEnemySegment(e,i2,tp.x,tp.y);
+          done=true; break;
+        }
+      }
+      if(done) break;
+    }
+    if(done) continue;
+    // 画面外
+    if(d.x*d.x+d.y*d.y>CFG.WORLD_BOUND*CFG.WORLD_BOUND) state.debris.splice(i,1);
+  }
+}
+
+//==============================================================
+// BREAK / KILL HELPERS
+//==============================================================
+function breakEnemySegment(enemy, idx, x, y){
+  enemy.segments.splice(idx, 1);
+  burst(x, y, TYPES[enemy.type].color, 12, 3);
+  spawnDebris(x, y, Math.random()*Math.PI*2, 'enemy');
+  Audio.sfx('break');
+  state.score++;
+  if(enemy.segments.length===0){
+    onEnemyKilled(enemy);
+  }
+}
+function killEnemyChainExplode(enemy){
+  // 後ろから連鎖爆発
+  const total = enemy.segments.length;
+  for(let i=total-1;i>=0;i--){
+    const tp=enemy.trail[(i+1)*CFG.SEG_SPACING];
+    if(tp){
+      burst(tp.x,tp.y,TYPES[enemy.type].color,12,3);
+    }
+  }
+  enemy.segments = [];
+  onEnemyKilled(enemy);
+}
+function onEnemyKilled(enemy){
+  enemy.dead = true;
+  enemy.explodeTimer = 18;
+  burst(enemy.x, enemy.y, TYPES[enemy.type].color, 50, 7);
+  burst(enemy.x, enemy.y, '#fff', 20, 5);
+  Audio.sfx('explode');
+  const prevUnlocked = previousUnlockedSet();
+  state.killCount++;
+  state.killsByType[enemy.type] = (state.killsByType[enemy.type]||0) + 1;
+  state.score += 20;
+  // 体節追加（吸収）。上限超えたら古いもの（先頭=頭側）から消える
+  const p = state.player;
+  if(p){
+    p.segments.push({hp: CFG.SEG_HP, type: enemy.type});
+    if(p.segments.length > CFG.PLAYER_MAX_LENGTH){
+      p.segments.shift();
+      // 古い節を参照していたエンティティのsegIndexを-1
+      for(let i=state.orbs.length-1;i>=0;i--){
+        const o = state.orbs[i];
+        if(o.ownerType==='player' && o.segIndex!==undefined){
+          o.segIndex--;
+          if(o.segIndex<0) state.orbs.splice(i,1);
+        }
+      }
+      for(let i=state.lasers.length-1;i>=0;i--){
+        const L = state.lasers[i];
+        if(L.ownerType==='player' && L.ownerRef && L.ownerRef.segIndex!==undefined){
+          L.ownerRef.segIndex--;
+          if(L.ownerRef.segIndex<0) state.lasers.splice(i,1);
+        }
+      }
+    }
+    updateBuildUI();
+  }
+  // コア回復
+  healCore(CFG.CORE_HEAL_PER_KILL, enemy.x, enemy.y);
+  // アンロック通知
+  const newUnlocked = previousUnlockedSet();
+  for(const k of newUnlocked){
+    if(!prevUnlocked.has(k)){
+      showToast(`UNLOCK: ${TYPES[k].name}`);
+    }
+  }
+  updateUnlockUI();
+}
+
+//==============================================================
+// PARTICLES
+//==============================================================
+function updateParticles(){
+  for(let i=state.particles.length-1;i>=0;i--){
+    const p=state.particles[i];
+    p.x+=p.vx; p.y+=p.vy;
+    p.vx*=0.94; p.vy*=0.94;
+    p.life--;
+    if(p.life<=0) state.particles.splice(i,1);
+  }
+}
+
+//==============================================================
+// SPAWN
+//==============================================================
+function updateSpawn(){
+  state.spawnTimer--;
+  if(state.spawnTimer<=0){
+    // 同時最大数を超えていたら湧かない（パフォーマンス保護）
+    const aliveCount = state.enemies.filter(e=>!e.dead).length;
+    if(aliveCount < CFG.ENEMY_MAX){
+      spawnEnemy();
+    }
+    const k=Math.min(1,state.time/CFG.SPAWN_RAMP_TIME);
+    const interval=CFG.SPAWN_INTERVAL_START*(1-k)+CFG.SPAWN_INTERVAL_MIN*k;
+    state.spawnTimer=Math.max(CFG.SPAWN_INTERVAL_MIN,interval);
+  }
+}
+
+//==============================================================
+// GAME OVER
+//==============================================================
+function triggerGameOver(){
+  if(state.over) return;
+  state.over=true; state.running=false;
+  Audio.sfx('gameover');
+  document.getElementById('finalScore').textContent=state.score;
+  document.getElementById('finalKills').textContent=state.killCount;
+  document.getElementById('finalLen').textContent=state.player?state.player.segments.length:0;
+  document.getElementById('gameover').classList.remove('hidden');
+}
+
+//==============================================================
+// DRAW
+//==============================================================
+function worldToScreen(x,y){ return [x,y]; }
+function worldToPixel(x,y){ return [CX+x*state.viewScale, CY+y*state.viewScale]; }
+
+function drawStars(){
+  for(const s of state.stars){
+    s.tw+=0.04;
+    const a=0.4+0.4*Math.sin(s.tw);
+    ctx.fillStyle=`rgba(180,210,255,${a.toFixed(3)})`;
+    ctx.beginPath(); ctx.arc(s.x,s.y,s.r,0,Math.PI*2); ctx.fill();
+  }
+}
+function drawCore(){
+  const pulse=1+0.04*Math.sin(state.frame*0.07);
+  const hpRatio=state.coreHp/CFG.CORE_HP;
+  const dangerSpeed=0.07+(1-hpRatio)*0.18;
+  const dynPulse=1+(0.04+(1-hpRatio)*0.08)*Math.sin(state.frame*dangerSpeed);
+  const r=CFG.CORE_RADIUS*dynPulse;
+  const flash=state.coreFlash>0?state.coreFlash/24:0;
+  const heal=state.coreHealFlash>0?state.coreHealFlash/28:0;
+  if(state.coreFlash>0) state.coreFlash--;
+  if(state.coreHealFlash>0) state.coreHealFlash--;
+  const lerp=(a,b,t)=>a*(1-t)+b*t;
+  const h=lerp(0,200,hpRatio); const s=lerp(95,80,hpRatio); const l=lerp(55,70,hpRatio);
+  const outerColor=`hsla(${h},${s}%,${l}%,0.7)`;
+  const midColor=`hsla(${h},${s}%,${l-15}%,0.25)`;
+  const g=ctx.createRadialGradient(0,0,0,0,0,r*3);
+  g.addColorStop(0,outerColor); g.addColorStop(0.3,midColor); g.addColorStop(1,'rgba(0,0,0,0)');
+  ctx.fillStyle=g; ctx.beginPath(); ctx.arc(0,0,r*3,0,Math.PI*2); ctx.fill();
+  const g2=ctx.createRadialGradient(-r*0.3,-r*0.3,0,0,0,r);
+  if(heal>0){
+    g2.addColorStop(0,'#fff');
+    g2.addColorStop(0.3,`hsl(140,80%,${70+heal*15}%)`);
+    g2.addColorStop(1,`hsl(140,80%,${35+heal*10}%)`);
+  } else if(flash>0){
+    g2.addColorStop(0,'#fff');
+    g2.addColorStop(0.3,`hsl(0,90%,${60+flash*20}%)`);
+    g2.addColorStop(1,`hsl(0,90%,${30+flash*10}%)`);
+  } else {
+    g2.addColorStop(0,'#fff');
+    g2.addColorStop(0.3,`hsl(${h},${s}%,${Math.min(95,l+20)}%)`);
+    g2.addColorStop(1,`hsl(${h},${s}%,${Math.max(20,l-30)}%)`);
+  }
+  ctx.fillStyle=g2; ctx.beginPath(); ctx.arc(0,0,r,0,Math.PI*2); ctx.fill();
+  ctx.strokeStyle=`hsla(${h},${s}%,${l+10}%,${0.3+0.2*Math.sin(state.frame*0.05)})`;
+  ctx.lineWidth=2/state.viewScale; ctx.beginPath(); ctx.arc(0,0,r*1.6,0,Math.PI*2); ctx.stroke();
+  if(hpRatio<0.4){
+    const warn=0.5+0.5*Math.sin(state.frame*0.25);
+    ctx.strokeStyle=`rgba(255,80,80,${warn*0.6})`;
+    ctx.lineWidth=2/state.viewScale; ctx.beginPath(); ctx.arc(0,0,r*2.2,0,Math.PI*2); ctx.stroke();
+  }
+}
+
+function drawEnemy(e){
+  const T=TYPES[e.type];
+  const ringColor=`rgba(255,220,200,0.9)`;
+  // 体節（後ろから前へ）
+  for(let i=e.segments.length-1;i>=0;i--){
+    const tp=e.trail[(i+1)*CFG.SEG_SPACING]; if(!tp) continue;
+    const sx=tp.x, sy=tp.y;
+    const seg=e.segments[i];
+    const hpRatio=seg.hp/CFG.SEG_HP;
+    const gr=CFG.ENEMY_SEG_RADIUS;
+    const grad=ctx.createRadialGradient(sx,sy,0,sx,sy,gr*2);
+    grad.addColorStop(0,T.glow); grad.addColorStop(1,'rgba(0,0,0,0)');
+    ctx.fillStyle=grad; ctx.beginPath(); ctx.arc(sx,sy,gr*2,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle=T.color;
+    ctx.beginPath(); ctx.arc(sx,sy,gr*hpRatio*0.45+gr*0.55,0,Math.PI*2); ctx.fill();
+    ctx.strokeStyle=ringColor; ctx.lineWidth=1.5/state.viewScale;
+    ctx.beginPath(); ctx.arc(sx,sy,gr-1,-Math.PI/2,-Math.PI/2+Math.PI*2*hpRatio); ctx.stroke();
+  }
+  // 頭
+  const hx=e.x, hy=e.y;
+  const hr=CFG.ENEMY_HEAD_RADIUS;
+  const hg=ctx.createRadialGradient(hx,hy,0,hx,hy,hr*2.5);
+  hg.addColorStop(0,T.glow); hg.addColorStop(1,'rgba(0,0,0,0)');
+  ctx.fillStyle=hg; ctx.beginPath(); ctx.arc(hx,hy,hr*2.5,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle=T.color; ctx.beginPath(); ctx.arc(hx,hy,hr,0,Math.PI*2); ctx.fill();
+  // 種類別マーク
+  drawTypeBadge(hx,hy,e.type,hr);
+  // 進行方向ノッチ
+  ctx.fillStyle=T.tip;
+  ctx.beginPath(); ctx.arc(hx+Math.cos(e.angle)*hr, hy+Math.sin(e.angle)*hr, hr*0.45, 0, Math.PI*2); ctx.fill();
+}
+
+function drawTypeBadge(x,y,type,r){
+  ctx.save();
+  ctx.translate(x,y);
+  ctx.fillStyle='rgba(0,0,0,0.45)';
+  ctx.beginPath(); ctx.arc(0,0,r*0.7,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle='#fff';
+  ctx.lineWidth=1.5/state.viewScale;
+  ctx.strokeStyle='#fff';
+  switch(type){
+    case 'ram': // 三角
+      ctx.beginPath(); ctx.moveTo(0,-r*0.45); ctx.lineTo(r*0.4,r*0.35); ctx.lineTo(-r*0.4,r*0.35); ctx.closePath(); ctx.fill();
+      break;
+    case 'pellet': // 小さい点x3
+      for(let i=-1;i<=1;i++){ ctx.beginPath(); ctx.arc(i*r*0.3,0,r*0.1,0,Math.PI*2); ctx.fill(); }
+      break;
+    case 'mine': // 星型
+      ctx.beginPath();
+      for(let i=0;i<8;i++){
+        const a=i*Math.PI/4, rad=i%2===0?r*0.45:r*0.2;
+        const xx=Math.cos(a)*rad, yy=Math.sin(a)*rad;
+        if(i===0) ctx.moveTo(xx,yy); else ctx.lineTo(xx,yy);
+      }
+      ctx.closePath(); ctx.fill();
+      break;
+    case 'laser': // 縦線
+      ctx.fillRect(-r*0.08, -r*0.5, r*0.16, r*1.0);
+      break;
+    case 'orb': // 円輪
+      ctx.beginPath(); ctx.arc(0,0,r*0.4,0,Math.PI*2); ctx.stroke();
+      break;
+    case 'homing': // ターゲットマーク
+      ctx.beginPath(); ctx.arc(0,0,r*0.35,0,Math.PI*2); ctx.stroke();
+      ctx.fillRect(-r*0.05,-r*0.05,r*0.1,r*0.1);
+      break;
+    case 'summon': // 三角×2
+      ctx.beginPath(); ctx.moveTo(-r*0.3,r*0.2); ctx.lineTo(0,-r*0.3); ctx.lineTo(r*0.3,r*0.2); ctx.closePath(); ctx.fill();
+      break;
+    case 'dash': // >>
+      ctx.beginPath();
+      ctx.moveTo(-r*0.3,-r*0.25); ctx.lineTo(-r*0.05,0); ctx.lineTo(-r*0.3,r*0.25);
+      ctx.moveTo(r*0.05,-r*0.25); ctx.lineTo(r*0.3,0); ctx.lineTo(r*0.05,r*0.25);
+      ctx.stroke();
+      break;
+  }
+  ctx.restore();
+}
+
+function drawPlayer(){
+  const p=state.player; if(!p) return;
+  // 体節
+  for(let i=p.segments.length-1;i>=0;i--){
+    const tp=p.trail[(i+1)*CFG.SEG_SPACING]; if(!tp) continue;
+    const sx=tp.x, sy=tp.y;
+    const seg=p.segments[i];
+    const T = seg.type ? TYPES[seg.type] : null;
+    const baseColor = T ? T.color : '#5cf';
+    const glowColor = T ? T.glow : 'rgba(80,200,255,0.5)';
+    const hpRatio=seg.hp/CFG.SEG_HP;
+    const gr=CFG.SEG_RADIUS;
+    const grad=ctx.createRadialGradient(sx,sy,0,sx,sy,gr*2);
+    grad.addColorStop(0,glowColor); grad.addColorStop(1,'rgba(0,0,0,0)');
+    ctx.fillStyle=grad; ctx.beginPath(); ctx.arc(sx,sy,gr*2,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle=baseColor;
+    ctx.beginPath(); ctx.arc(sx,sy,gr*hpRatio*0.45+gr*0.55,0,Math.PI*2); ctx.fill();
+    // ミニ識別アイコン
+    if(seg.type) drawTypeBadge(sx,sy,seg.type,gr);
+    // HPリング
+    ctx.strokeStyle='rgba(220,240,255,0.85)';
+    ctx.lineWidth=1.5/state.viewScale;
+    ctx.beginPath(); ctx.arc(sx,sy,gr-1,-Math.PI/2,-Math.PI/2+Math.PI*2*hpRatio); ctx.stroke();
+  }
+  // 頭
+  const hr=CFG.HEAD_RADIUS;
+  const hg=ctx.createRadialGradient(p.x,p.y,0,p.x,p.y,hr*2.5);
+  hg.addColorStop(0, p.dashActive?'rgba(255,180,80,0.8)':'rgba(120,220,255,0.6)');
+  hg.addColorStop(1,'rgba(0,0,0,0)');
+  ctx.fillStyle=hg; ctx.beginPath(); ctx.arc(p.x,p.y,hr*2.5,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle = p.dashActive ? '#fda' : '#cff';
+  ctx.beginPath(); ctx.arc(p.x,p.y,hr,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle='#fff';
+  ctx.beginPath(); ctx.arc(p.x+Math.cos(p.angle)*hr, p.y+Math.sin(p.angle)*hr, hr*0.5,0,Math.PI*2); ctx.fill();
+}
+
+function drawDebris(){
+  for(const d of state.debris){
+    const isPlayer=d.owner==='player';
+    const trailC=isPlayer?'rgba(160,220,255,0.5)':'rgba(255,180,120,0.5)';
+    const coreC=isPlayer?'#cef':'#fc8';
+    ctx.strokeStyle=trailC; ctx.lineWidth=1.5/state.viewScale;
+    ctx.beginPath(); ctx.moveTo(d.x,d.y); ctx.lineTo(d.x-d.vx*3,d.y-d.vy*3); ctx.stroke();
+    const g=ctx.createRadialGradient(d.x,d.y,0,d.x,d.y,CFG.DEBRIS_RADIUS*2.5);
+    g.addColorStop(0,'#fff');
+    g.addColorStop(0.4, isPlayer?'rgba(120,200,255,0.8)':'rgba(255,160,80,0.85)');
+    g.addColorStop(0.7, isPlayer?'rgba(140,210,255,0.55)':'rgba(255,180,100,0.6)');
+    g.addColorStop(1,'rgba(0,0,0,0)');
+    ctx.fillStyle=g; ctx.beginPath(); ctx.arc(d.x,d.y,CFG.DEBRIS_RADIUS*2.5,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle=coreC; ctx.beginPath(); ctx.arc(d.x,d.y,CFG.DEBRIS_RADIUS,0,Math.PI*2); ctx.fill();
+  }
+}
+
+function drawMines(){
+  for(const m of state.mines){
+    const isPlayer=m.owner==='player';
+    const blink = 0.5+0.5*Math.sin(state.frame*0.3 + m.x*0.1);
+    const color = isPlayer?'#9cf':'#fc6';
+    const g=ctx.createRadialGradient(m.x,m.y,0,m.x,m.y,CFG.MINE_RADIUS*2.5);
+    g.addColorStop(0, isPlayer?'rgba(120,200,255,0.6)':'rgba(255,210,80,0.6)');
+    g.addColorStop(1,'rgba(0,0,0,0)');
+    ctx.fillStyle=g; ctx.beginPath(); ctx.arc(m.x,m.y,CFG.MINE_RADIUS*2.5,0,Math.PI*2); ctx.fill();
+    // 三角警告
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    const r = CFG.MINE_RADIUS;
+    ctx.moveTo(m.x, m.y-r);
+    ctx.lineTo(m.x+r*0.95, m.y+r*0.8);
+    ctx.lineTo(m.x-r*0.95, m.y+r*0.8);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = `rgba(0,0,0,${0.4+0.4*blink})`;
+    ctx.beginPath(); ctx.arc(m.x, m.y+r*0.1, r*0.18, 0, Math.PI*2); ctx.fill();
+  }
+}
+
+function drawLasers(){
+  for(const L of state.lasers){
+    const dx=Math.cos(L.angle), dy=Math.sin(L.angle);
+    const len = CFG.WORLD_BOUND*2;
+    const isPlayer = L.ownerType==='player';
+    if(L.state==='warn'){
+      // 予兆：細い点線
+      const a = 0.4 + 0.6*Math.sin(state.frame*0.6);
+      ctx.strokeStyle = isPlayer ? `rgba(140,220,255,${a})` : `rgba(120,255,120,${a})`;
+      ctx.lineWidth = 2/state.viewScale;
+      ctx.setLineDash([8/state.viewScale, 4/state.viewScale]);
+      ctx.beginPath();
+      ctx.moveTo(L.ox, L.oy);
+      ctx.lineTo(L.ox+dx*len, L.oy+dy*len);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    } else {
+      // 発射中：太い実線＋グロー
+      const t = L.timer/CFG.LASER_FIRE;
+      const w = CFG.LASER_HALF_WIDTH*2 * (0.7+0.3*Math.sin(state.frame*0.5));
+      const c1 = isPlayer?'rgba(180,230,255,0.4)':'rgba(180,255,180,0.4)';
+      const c2 = isPlayer?'rgba(220,250,255,0.95)':'rgba(220,255,220,0.95)';
+      ctx.strokeStyle = c1;
+      ctx.lineWidth = w*2;
+      ctx.beginPath(); ctx.moveTo(L.ox,L.oy); ctx.lineTo(L.ox+dx*len, L.oy+dy*len); ctx.stroke();
+      ctx.strokeStyle = c2;
+      ctx.lineWidth = w*0.7;
+      ctx.beginPath(); ctx.moveTo(L.ox,L.oy); ctx.lineTo(L.ox+dx*len, L.oy+dy*len); ctx.stroke();
+    }
+  }
+}
+
+function drawHomingMissiles(){
+  for(const h of state.homingMissiles){
+    const isPlayer = h.owner==='player';
+    const color = isPlayer?'#9cf':'#f6c';
+    const t = h.life/CFG.HOMING_LIFE;
+    // 0より大きい範囲に確保（arc半径が負になるとCanvasがthrowする）
+    const blink = 0.7+0.3*Math.sin(state.frame*0.5*(1+t*3));
+    const r = CFG.HOMING_RADIUS;
+    const g = ctx.createRadialGradient(h.x,h.y,0,h.x,h.y,r*3);
+    g.addColorStop(0,'#fff');
+    g.addColorStop(0.3, isPlayer?'rgba(140,200,255,0.8)':'rgba(255,120,200,0.85)');
+    g.addColorStop(1,'rgba(0,0,0,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(h.x,h.y,r*3,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle = color;
+    ctx.beginPath(); ctx.arc(h.x,h.y,r*blink,0,Math.PI*2); ctx.fill();
+    // 軌跡
+    ctx.strokeStyle = isPlayer?'rgba(140,200,255,0.4)':'rgba(255,120,200,0.4)';
+    ctx.lineWidth = 1.5/state.viewScale;
+    ctx.beginPath(); ctx.moveTo(h.x,h.y); ctx.lineTo(h.x-h.vx*5, h.y-h.vy*5); ctx.stroke();
+  }
+}
+
+function drawOrbs(){
+  for(const o of state.orbs){
+    const isPlayer = o.ownerType==='player';
+    const color = isPlayer?'#cff':'#6ff';
+    const glow = isPlayer?'rgba(180,255,255,0.7)':'rgba(120,255,255,0.7)';
+    const r = 8;
+    const g = ctx.createRadialGradient(o.x,o.y,0,o.x,o.y,r*2.5);
+    g.addColorStop(0,'#fff'); g.addColorStop(0.3,glow); g.addColorStop(1,'rgba(0,0,0,0)');
+    ctx.fillStyle=g; ctx.beginPath(); ctx.arc(o.x,o.y,r*2.5,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle=color; ctx.beginPath(); ctx.arc(o.x,o.y,r,0,Math.PI*2); ctx.fill();
+  }
+}
+
+function drawMinions(){
+  for(const m of state.minions){
+    const color = m.owner==='player'?'#ddf':'#fee';
+    const glow = m.owner==='player'?'rgba(180,200,255,0.7)':'rgba(255,220,200,0.7)';
+    // 1節
+    if(m.trail.length>8){
+      const tp=m.trail[8];
+      const g=ctx.createRadialGradient(tp.x,tp.y,0,tp.x,tp.y,12);
+      g.addColorStop(0,glow); g.addColorStop(1,'rgba(0,0,0,0)');
+      ctx.fillStyle=g; ctx.beginPath(); ctx.arc(tp.x,tp.y,12,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle=color; ctx.beginPath(); ctx.arc(tp.x,tp.y,5,0,Math.PI*2); ctx.fill();
+    }
+    // 頭
+    const g=ctx.createRadialGradient(m.x,m.y,0,m.x,m.y,16);
+    g.addColorStop(0,'#fff'); g.addColorStop(0.4,glow); g.addColorStop(1,'rgba(0,0,0,0)');
+    ctx.fillStyle=g; ctx.beginPath(); ctx.arc(m.x,m.y,16,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle=color; ctx.beginPath(); ctx.arc(m.x,m.y,6,0,Math.PI*2); ctx.fill();
+  }
+}
+
+function drawParticles(){
+  for(const p of state.particles){
+    const a=Math.max(0,p.life/p.max);
+    ctx.globalAlpha=a;
+    ctx.fillStyle=p.color;
+    ctx.beginPath(); ctx.arc(p.x,p.y,2,0,Math.PI*2); ctx.fill();
+    ctx.globalAlpha=1;
+  }
+}
+
+function drawArrows(){
+  const margin=40;
+  for(const e of state.enemies){
+    if(e.dead) continue;
+    const [sx,sy]=worldToPixel(e.x,e.y);
+    if(sx>margin&&sx<W-margin&&sy>margin&&sy<H-margin) continue;
+    let ex=Math.max(margin,Math.min(W-margin,sx));
+    let ey=Math.max(margin,Math.min(H-margin,sy));
+    ctx.fillStyle=TYPES[e.type].color;
+    ctx.globalAlpha=0.75;
+    ctx.beginPath();
+    const ang=Math.atan2(sy-ey,sx-ex);
+    ctx.translate(ex,ey); ctx.rotate(ang);
+    ctx.moveTo(0,0); ctx.lineTo(-14,-7); ctx.lineTo(-14,7); ctx.closePath();
+    ctx.fill();
+    ctx.setTransform(1,0,0,1,0,0);
+    ctx.globalAlpha=1;
+  }
+}
+
+function draw(){
+  ctx.setTransform(1,0,0,1,0,0);
+  ctx.fillStyle='#000'; ctx.fillRect(0,0,W,H);
+  const bg=ctx.createRadialGradient(CX,CY,0,CX,CY,Math.max(W,H));
+  bg.addColorStop(0,'rgba(10,20,50,0.4)'); bg.addColorStop(1,'rgba(0,0,0,0)');
+  ctx.fillStyle=bg; ctx.fillRect(0,0,W,H);
+
+  ctx.setTransform(state.viewScale,0,0,state.viewScale,CX,CY);
+  drawStars();
+  ctx.strokeStyle='rgba(50,100,180,0.15)';
+  ctx.lineWidth=1/state.viewScale;
+  ctx.beginPath(); ctx.arc(0,0,CFG.WORLD_BOUND,0,Math.PI*2); ctx.stroke();
+  drawCore();
+  drawMines();
+  drawLasers();
+  for(const e of state.enemies){ if(!e.dead) drawEnemy(e); }
+  drawPlayer();
+  drawMinions();
+  drawHomingMissiles();
+  drawOrbs();
+  drawDebris();
+  drawParticles();
+
+  ctx.setTransform(1,0,0,1,0,0);
+  drawArrows();
+}
+
+//==============================================================
+// UI helpers
+//==============================================================
+function updateUnlockUI(){
+  const row=document.getElementById('unlockRow');
+  let html='';
+  for(const k of TYPE_KEYS){
+    const T=TYPES[k];
+    const on = isUnlocked(k);
+    let label = T.name;
+    if(!on){
+      const req = UNLOCK_PREREQ[k];
+      if(req){
+        const have = state.killsByType[req.prereq]||0;
+        label += ` ${have}/${req.count} ${TYPES[req.prereq].name[0]}`;
+      }
+    } else {
+      const kills = state.killsByType[k]||0;
+      if(kills>0) label += ` ×${kills}`;
+    }
+    html += `<span class="tag${on?' on':''}" style="color:${T.color}">${label}</span>`;
+  }
+  row.innerHTML = html;
+}
+function updateBuildUI(){
+  const row=document.getElementById('buildRow');
+  const p=state.player; if(!p){ row.innerHTML=''; return; }
+  let html='';
+  for(const s of p.segments){
+    const T = s.type ? TYPES[s.type] : null;
+    const c = T ? T.color : '#5cf';
+    html += `<span class="seg" style="color:${c}; background:${c};"></span>`;
+  }
+  row.innerHTML = html;
+}
+
+//==============================================================
+// LOOP
+//==============================================================
+function loop(){
+  // FPS計測
+  const now = performance.now();
+  if(state.lastFrameTime){
+    const delta = now - state.lastFrameTime;
+    state.frameDeltas.push(delta);
+    if(state.frameDeltas.length>30) state.frameDeltas.shift();
+    const avg = state.frameDeltas.reduce((a,b)=>a+b,0)/state.frameDeltas.length;
+    state.fps = Math.max(1, Math.round(1000/avg));
+  }
+  state.lastFrameTime = now;
+  // フリーズ寸前にコンソールに状況をdump
+  if(state.running && state.fps < 25){
+    state.lowFpsCount++;
+    if(state.lowFpsCount % 30 === 1){
+      console.warn('[low fps]', state.fps, {
+        enemies: state.enemies.length,
+        debris: state.debris.length,
+        homing: state.homingMissiles.length,
+        mines: state.mines.length,
+        lasers: state.lasers.length,
+        minions: state.minions.length,
+        orbs: state.orbs.length,
+        particles: state.particles.length,
+        playerSegs: state.player ? state.player.segments.length : 0,
+      });
+    }
+  } else state.lowFpsCount = 0;
+  // デバッグHUD更新
+  const dbg = document.getElementById('debug');
+  if(dbg){
+    const fpsClass = state.fps<25?'bad':state.fps<45?'warn':'';
+    dbg.innerHTML = `<span class="${fpsClass}">FPS ${state.fps}</span><br>
+      E ${state.enemies.length} / D ${state.debris.length} / H ${state.homingMissiles.length}<br>
+      M ${state.mines.length} / L ${state.lasers.length} / m ${state.minions.length}<br>
+      O ${state.orbs.length} / P ${state.particles.length}<br>
+      pSeg ${state.player ? state.player.segments.length : 0}`;
+  }
+  if(state.running){
+    state.frame++; state.time+=1/60;
+    updateSpawn();
+    updatePlayer();
+    if(!state.over){
+      updatePlayerAbilities();
+      updateEnemies();
+      updateDebris();
+      updateMines();
+      updateLasers();
+      updateHomingMissiles();
+      updateOrbs();
+      updateMinions();
+    }
+    updateParticles();
+    updateViewScale();
+    tickToast();
+    document.getElementById('score').textContent=state.score;
+    document.getElementById('kills').textContent=state.killCount;
+    document.getElementById('length').textContent=state.player?state.player.segments.length:0;
+    document.getElementById('time').textContent=state.time.toFixed(1);
+    const coreEl = document.getElementById('core');
+    coreEl.textContent = state.coreHp;
+    const hpR = state.coreHp/CFG.CORE_HP;
+    coreEl.style.color = hpR>0.6 ? '#9fc' : hpR>0.3 ? '#fc6' : '#f66';
+  }
+  draw();
+  requestAnimationFrame(loop);
+}
+
+//==============================================================
+// UI
+//==============================================================
+document.getElementById('start').addEventListener('click',()=>{
+  Audio.init(); Audio.resume();
+  document.getElementById('start').classList.add('hidden');
+  resetGame();
+});
+document.getElementById('gameover').addEventListener('click',()=>{
+  document.getElementById('gameover').classList.add('hidden');
+  Audio.resume();
+  resetGame();
+});
+
+makeStars();
+updateUnlockUI();
+loop();
+</script>
+</body>
+</html>
