@@ -47,7 +47,13 @@
   .cell .wire b{color:var(--ink)}
   .startbtn{font-size:10px;padding:2px 6px;border-radius:5px}
   .legend{display:flex;gap:10px;flex-wrap:wrap;font-size:11px;color:var(--sub);margin-top:6px}
-  .chip-svg{flex:0 0 168px}
+  #chip{width:100%;height:auto;display:block;background:#13101c;border:1px solid var(--line);border-radius:10px;margin-bottom:8px;touch-action:manipulation}
+  #chip rect,#chip circle{cursor:pointer}
+  #inspector{margin-bottom:6px}
+  .insp{background:var(--panel2);border:1px solid var(--line);border-radius:9px;padding:8px}
+  .insprow{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:6px}
+  .ib{font-size:12px;padding:6px 10px;border-radius:7px}
+  #opSel{width:100%;font-family:inherit;font-size:12px;color:var(--ink);background:#171323;border:1px solid var(--line);border-radius:7px;padding:7px 5px}
   .hint{font-size:12px;color:var(--sub);line-height:1.6;margin-top:6px}
   #dbg{position:fixed;left:6px;bottom:6px;font:11px/1.4 monospace;color:#7fe;background:#000a;
     padding:4px 7px;border-radius:6px;pointer-events:none;white-space:pre;display:none;z-index:50}
@@ -63,7 +69,7 @@
 <body>
 <div id="app">
   <h1>HOMUNCULUS</h1>
-  <div class="tag">錬金基板工場 — プロト v0.4（カルネージハート型・タイトル仮）</div>
+  <div class="tag">錬金基板工場 — プロト v0.4.1（カルネージハート型・タイトル仮）</div>
   <div class="wrap">
     <div class="left">
       <div class="card">
@@ -91,16 +97,14 @@
     </div>
     <div class="right">
       <div class="card">
-        <div class="sect">ホムンクルスの基板（2×2・4ブロック＋配線）</div>
+        <div class="sect">ホムンクルスの基板（タップで配置・ポートから配線）</div>
         <div class="tabs" id="tabs"></div>
-        <div class="chipwrap">
-          <svg class="chip-svg" id="chipSvg" viewBox="0 0 168 168" width="168" height="168"></svg>
-          <div class="chipgrid" id="chipGrid"></div>
-        </div>
-        <div class="row" style="margin-top:8px">
+        <svg id="chip" viewBox="0 0 300 272"></svg>
+        <div id="inspector"></div>
+        <div class="row" style="margin-top:4px">
           <button id="addHomu">＋ ホムンクルス追加</button>
         </div>
-        <div class="hint">各ブロックは「行動(出力1)」か「条件(○/✕の2出力)」。配線先のセル番号を選ぶ。4マスしか無いので1体は単機能 ── 投入係・中継係・納品係を組み合わせてラインを回す。</div>
+        <div class="hint">セルをタップ→下で中身(空/行動/条件)を選ぶ。配線は、条件の<span style="color:var(--good)">○</span>/<span style="color:var(--bad)">✕</span>、行動の<span style="color:#8a83a8">▶</span>ポートをタップ→繋ぎ先セルをタップ。金丸＝開始セル。4マスだから1体は単機能、複数を組み合わせる。</div>
       </div>
     </div>
   </div>
@@ -397,93 +401,115 @@ function sel(options,val,onCh,blank){
   return s;
 }
 const CELL_NAMES=['①','②','③','④'];
-function targetSel(val,onCh){
-  const opts=[{k:0,l:'→①'},{k:1,l:'→②'},{k:2,l:'→③'},{k:3,l:'→④'}];
-  return sel(opts,val,v=>onCh(parseInt(v,10)),'なし');
-}
-function buildChip(){
-  const h=S.agents[activeAgent];const box=$('chipGrid');box.innerHTML='';
-  h.chip.cells.forEach((cell,i)=>{
-    const card=document.createElement('div');card.className='cell'+(h.chip.start===i?' start':'');
-    const head=document.createElement('div');head.className='ch';
-    head.innerHTML=`<span>${CELL_NAMES[i]}</span>`;
-    const sb=document.createElement('button');sb.className='startbtn'+(h.chip.start===i?' on':'');
-    sb.textContent=h.chip.start===i?'開始':'開始に';
-    sb.onclick=()=>{h.chip.start=i;h.pc=i;buildChip();};
-    head.appendChild(sb);card.appendChild(head);
-    // ブロック種別
-    const kindSel=sel([{k:'empty',l:'空'},{k:'act',l:'行動'},{k:'cond',l:'条件'}],cell.kind,v=>{
-      cell.kind=v;
-      if(v==='act'){cell.op='takeS';cell.out=[0,-1];}
-      else if(v==='cond'){cell.op='empty';cell.out=[0,1];}
-      else{cell.op='';cell.out=[-1,-1];}
-      resetPCs();buildChip();
-    });
-    card.appendChild(kindSel);
-    if(cell.kind==='act'){
-      card.appendChild(sel(ACT_OPS,cell.op,v=>{cell.op=v;}));
-      const w=document.createElement('div');w.className='wire';
-      const lab=document.createElement('span');lab.innerHTML='次▶';w.appendChild(lab);
-      w.appendChild(targetSel(cell.out[0],v=>{cell.out[0]=v;resetPCs();drawChipSvg();}));
-      card.appendChild(w);
-    }else if(cell.kind==='cond'){
-      card.appendChild(sel(COND_OPS,cell.op,v=>{cell.op=v;}));
-      const wT=document.createElement('div');wT.className='wire';
-      wT.innerHTML='<span style="color:var(--good)">○</span>';
-      wT.appendChild(targetSel(cell.out[0],v=>{cell.out[0]=v;resetPCs();drawChipSvg();}));
-      card.appendChild(wT);
-      const wF=document.createElement('div');wF.className='wire';
-      wF.innerHTML='<span style="color:var(--bad)">✕</span>';
-      wF.appendChild(targetSel(cell.out[1],v=>{cell.out[1]=v;resetPCs();drawChipSvg();}));
-      card.appendChild(wF);
-    }
-    box.appendChild(card);
-  });
-  drawChipSvg();
-}
-function resetPCs(){ for(const h of S.agents) h.pc=h.chip.start; }
-
-// 配線のSVG可視化
-const CPOS=[{x:46,y:46},{x:122,y:46},{x:46,y:122},{x:122,y:122}];
-function drawChipSvg(){
-  const h=S.agents[activeAgent];const svg=$('chipSvg');
-  let s='';
-  // 配線（先に矢印を描く）
-  h.chip.cells.forEach((cell,i)=>{
-    if(cell.kind==='act' && cell.out[0]>=0) s+=arrow(i,cell.out[0],'#8a83a8');
-    if(cell.kind==='cond'){
-      if(cell.out[0]>=0) s+=arrow(i,cell.out[0],'#5fd08a');
-      if(cell.out[1]>=0) s+=arrow(i,cell.out[1],'#e0617a');
-    }
-  });
-  // セル
-  h.chip.cells.forEach((cell,i)=>{
-    const p=CPOS[i];const isStart=h.chip.start===i;
-    const fill=cell.kind==='empty'?'#221d30':(cell.kind==='cond'?'#2a2342':'#2f2a1c');
-    s+=`<rect x="${p.x-30}" y="${p.y-26}" width="60" height="52" rx="9" fill="${fill}" stroke="${isStart?'#c9a24a':'#3a3350'}" stroke-width="${isStart?2:1}"/>`;
-    s+=`<text x="${p.x}" y="${p.y-12}" fill="#a99fc4" font-size="9" text-anchor="middle">${CELL_NAMES[i]}${isStart?' 開始':''}</text>`;
-    let lbl = cell.kind==='empty'?'空':opLabel(cell);
-    s+=`<text x="${p.x}" y="${p.y+6}" fill="#e9e4f5" font-size="8" text-anchor="middle">${wrapText(lbl)}</text>`;
-  });
-  svg.innerHTML=s;
+// --- 基板ジオメトリ ---
+const CW=128, CH=104;
+const CELLBOX=[{x:16,y:24},{x:156,y:24},{x:16,y:152},{x:156,y:152}];
+function cellCenter(i){const b=CELLBOX[i];return {x:b.x+CW/2,y:b.y+CH/2};}
+function portPos(i,which,cell){
+  const b=CELLBOX[i], by=b.y+CH;
+  if(cell.kind==='act') return {x:b.x+CW/2,y:by};
+  return which==='a' ? {x:b.x+CW*0.30,y:by} : {x:b.x+CW*0.70,y:by};
 }
 function opLabel(cell){
   if(cell.kind==='act') return (ACT_OPS.find(o=>o.k===cell.op)||{l:cell.op}).l;
   if(cell.kind==='cond') return (COND_OPS.find(o=>o.k===cell.op)||{l:cell.op}).l;
   return '空';
 }
-function wrapText(t){ return t.length>6?t.slice(0,6):t; }
-function arrow(from,to,col){
-  const a=CPOS[from],b=CPOS[to];
-  if(from===to){ // 自己ループ
-    return `<text x="${a.x+34}" y="${a.y}" fill="${col}" font-size="12">↻</text>`;
+function resetPCs(){ for(const h of S.agents) h.pc=h.chip.start; }
+
+let selectedCell=null, wiringFrom=null;
+
+function buildChip(){
+  selectedCell=null; wiringFrom=null;
+  $('chip').onclick=onChipClick;
+  drawChip(); buildInspector();
+}
+function wireArrow(a,b,col){
+  const dx=b.x-a.x,dy=b.y-a.y,len=Math.hypot(dx,dy)||1,ux=dx/len,uy=dy/len;
+  const ex=b.x-ux*16, ey=b.y-uy*16, ah=7, px=-uy,py=ux;
+  return `<line x1="${a.x}" y1="${a.y}" x2="${ex}" y2="${ey}" stroke="${col}" stroke-width="2"/>`+
+    `<polygon points="${ex},${ey} ${ex-ux*ah+px*ah*0.6},${ey-uy*ah+py*ah*0.6} ${ex-ux*ah-px*ah*0.6},${ey-uy*ah-py*ah*0.6}" fill="${col}"/>`;
+}
+function portCircle(i,which,cell,col,glyph){
+  const p=portPos(i,which,cell), hot=wiringFrom&&wiringFrom.cell===i&&wiringFrom.which===which;
+  return `<circle data-port="${i}" data-which="${which}" cx="${p.x}" cy="${p.y}" r="${hot?12:10}" fill="${hot?col:'#15111e'}" stroke="${col}" stroke-width="2"/>`+
+    `<text x="${p.x}" y="${p.y+4}" font-size="11" text-anchor="middle" fill="${hot?'#15111e':col}" pointer-events="none">${glyph}</text>`;
+}
+function drawChip(){
+  const h=S.agents[activeAgent], svg=$('chip'); let s='';
+  // 配線
+  h.chip.cells.forEach((cell,i)=>{
+    if(cell.kind==='act' && cell.out[0]>=0) s+=wireArrow(portPos(i,'a',cell),cellCenter(cell.out[0]),'#8a83a8');
+    if(cell.kind==='cond'){
+      if(cell.out[0]>=0) s+=wireArrow(portPos(i,'a',cell),cellCenter(cell.out[0]),'#5fd08a');
+      if(cell.out[1]>=0) s+=wireArrow(portPos(i,'b',cell),cellCenter(cell.out[1]),'#e0617a');
+    }
+  });
+  // セル
+  h.chip.cells.forEach((cell,i)=>{
+    const b=CELLBOX[i], isStart=h.chip.start===i, isSel=selectedCell===i;
+    const fill=cell.kind==='empty'?'#221d30':(cell.kind==='cond'?'#2a2342':'#2f2a1c');
+    s+=`<rect data-cell="${i}" x="${b.x}" y="${b.y}" width="${CW}" height="${CH}" rx="11" fill="${fill}" stroke="${isStart?'#c9a24a':(isSel?'#7a5cc4':'#3a3350')}" stroke-width="${isStart||isSel?2.5:1}"/>`;
+    s+=`<text x="${b.x+CW/2}" y="${b.y+22}" font-size="9" text-anchor="middle" fill="#a99fc4" pointer-events="none">セル${CELL_NAMES[i]}</text>`;
+    s+=`<text x="${b.x+CW/2}" y="${b.y+CH/2+10}" font-size="12" text-anchor="middle" fill="#e9e4f5" pointer-events="none">${cell.kind==='empty'?'空':opLabel(cell)}</text>`;
+    // 開始バッジ
+    s+=`<circle data-start="${i}" cx="${b.x+15}" cy="${b.y+15}" r="10" fill="${isStart?'#c9a24a':'#15111e'}" stroke="#c9a24a" stroke-width="1.5"/>`;
+    s+=`<text x="${b.x+15}" y="${b.y+19}" font-size="10" text-anchor="middle" fill="${isStart?'#231a06':'#c9a24a'}" pointer-events="none">S</text>`;
+    // ポート
+    if(cell.kind==='act') s+=portCircle(i,'a',cell,'#8a83a8','▶');
+    else if(cell.kind==='cond'){ s+=portCircle(i,'a',cell,'#5fd08a','○'); s+=portCircle(i,'b',cell,'#e0617a','✕'); }
+  });
+  if(wiringFrom) s+=`<text x="150" y="14" font-size="11" text-anchor="middle" fill="#c9a24a">▶ 繋ぎ先のセルをタップ（同ポート再タップで取消）</text>`;
+  svg.innerHTML=s;
+}
+function onChipClick(e){
+  const h=S.agents[activeAgent];
+  const port=e.target.closest&&e.target.closest('[data-port]');
+  if(port){ const i=+port.dataset.port, w=port.dataset.which;
+    wiringFrom=(wiringFrom&&wiringFrom.cell===i&&wiringFrom.which===w)?null:{cell:i,which:w};
+    drawChip(); return; }
+  const start=e.target.closest&&e.target.closest('[data-start]');
+  if(start){ h.chip.start=+start.dataset.start; resetPCs(); wiringFrom=null; drawChip(); buildInspector(); return; }
+  const cellEl=e.target.closest&&e.target.closest('[data-cell]');
+  if(cellEl){ const i=+cellEl.dataset.cell;
+    if(wiringFrom){ const c=h.chip.cells[wiringFrom.cell];
+      if(c.kind==='act') c.out[0]=i;
+      else if(c.kind==='cond') c.out[wiringFrom.which==='a'?0:1]=i;
+      wiringFrom=null; resetPCs(); drawChip(); return; }
+    selectedCell=i; drawChip(); buildInspector(); return; }
+}
+function buildInspector(){
+  const h=S.agents[activeAgent], box=$('inspector');
+  if(selectedCell==null){ box.innerHTML='<div class="hint" style="margin-top:0">セルをタップして中身を選ぶ</div>'; return; }
+  const i=selectedCell, cell=h.chip.cells[i];
+  let html=`<div class="insp"><div class="insprow"><b>セル${CELL_NAMES[i]}</b>`;
+  html+=`<button class="ib ${h.chip.start===i?'on':''}" data-ins="start">${h.chip.start===i?'開始セル':'開始にする'}</button></div>`;
+  html+=`<div class="insprow">`;
+  [['empty','空'],['act','行動'],['cond','条件']].forEach(([k,l])=>{
+    html+=`<button class="ib ${cell.kind===k?'on':''}" data-ins="kind" data-k="${k}">${l}</button>`;
+  });
+  html+=`</div>`;
+  if(cell.kind==='act'||cell.kind==='cond'){
+    const ops=cell.kind==='act'?ACT_OPS:COND_OPS;
+    html+=`<select id="opSel">`+ops.map(o=>`<option value="${o.k}" ${o.k===cell.op?'selected':''}>${o.l}</option>`).join('')+`</select>`;
   }
-  const dx=b.x-a.x,dy=b.y-a.y,len=Math.hypot(dx,dy),ux=dx/len,uy=dy/len;
-  const x1=a.x+ux*30,y1=a.y+uy*26,x2=b.x-ux*32,y2=b.y-uy*28;
-  const ah=6;
-  const px=-uy,py=ux;
-  return `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${col}" stroke-width="2"/>`+
-         `<polygon points="${x2},${y2} ${x2-ux*ah+px*ah*0.6},${y2-uy*ah+py*ah*0.6} ${x2-ux*ah-px*ah*0.6},${y2-uy*ah-py*ah*0.6}" fill="${col}"/>`;
+  html+=`</div>`;
+  box.innerHTML=html;
+  box.querySelectorAll('[data-ins]').forEach(btn=>{
+    btn.onclick=()=>{
+      if(btn.dataset.ins==='start'){ h.chip.start=i; resetPCs(); }
+      else if(btn.dataset.ins==='kind'){
+        const k=btn.dataset.k; cell.kind=k;
+        if(k==='act'){cell.op='takeS';cell.out=[0,-1];}
+        else if(k==='cond'){cell.op='empty';cell.out=[0,1];}
+        else{cell.op='';cell.out=[-1,-1];}
+        resetPCs();
+      }
+      drawChip(); buildInspector();
+    };
+  });
+  const opSel=box.querySelector('#opSel');
+  if(opSel) opSel.onchange=()=>{cell.op=opSel.value;drawChip();};
 }
 
 $('addHomu').onclick=()=>{
