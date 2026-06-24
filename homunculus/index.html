@@ -8,7 +8,7 @@
   :root{
     --bg:#15131c; --panel:#1f1b2b; --panel2:#272036; --ink:#e9e4f5; --sub:#a99fc4;
     --line:#3a3350; --accent:#c9a24a; --accent2:#7a5cc4; --good:#5fd08a; --bad:#e0617a;
-    --s0:#4a4658; --s1:#dcdce6; --s2:#e3c34a; --s3:#e0503a;
+    --s0:#6a6478; --s1:#dcdce6; --s2:#e3c34a; --s3:#e0503a;
   }
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);
@@ -59,31 +59,25 @@
   .modal .k{color:var(--accent);font-weight:700}
   .hint{font-size:12px;color:var(--sub);line-height:1.6;margin-top:4px}
   .toast{position:fixed;left:50%;top:14px;transform:translateX(-50%);background:var(--good);color:#06210f;
-    padding:7px 16px;border-radius:999px;font-size:13px;font-weight:700;z-index:80;opacity:0;transition:opacity .25s;pointer-events:none}
+    padding:7px 16px;border-radius:999px;font-size:13px;font-weight:700;z-index:80;opacity:0;transition:opacity .25s;pointer-events:none;max-width:90%;text-align:center}
 </style>
 </head>
 <body>
 <div id="app">
   <h1>HOMUNCULUS</h1>
-  <div class="tag">錬金ガンビット工場 — プロトタイプ v0.1（タイトル仮）</div>
+  <div class="tag">錬金ガンビット工場 — プロトタイプ v0.2（タイトル仮）</div>
   <div class="wrap">
     <div class="left">
       <div class="card">
         <div class="goal">
-          <div>目標：<b id="goalText">賢者の石(赤)を 3 個 納品</b></div>
+          <div>目標：<b id="goalText">—</b></div>
           <div class="row">
-            <span class="pill">納品 <b id="delivered">0</b></span>
+            <span class="pill">進捗 <b id="prog">0/0</b></span>
             <span class="pill">業績 <b id="points">0</b></span>
           </div>
         </div>
         <canvas id="cv" width="448" height="384"></canvas>
-        <div class="legend">
-          <span class="chip"><span class="dot" style="background:var(--s0)"></span>黒(鉛)</span>
-          <span class="chip"><span class="dot" style="background:var(--s1)"></span>白</span>
-          <span class="chip"><span class="dot" style="background:var(--s2)"></span>黄</span>
-          <span class="chip"><span class="dot" style="background:var(--s3)"></span>赤(賢者の石)</span>
-          <span class="chip">脈=採掘 / 坩堝=精製(段+1) / 祭壇=納品</span>
-        </div>
+        <div class="legend" id="legend"></div>
       </div>
       <div class="card">
         <div class="row" style="justify-content:space-between">
@@ -106,9 +100,9 @@
         <div class="tabs" id="tabs"></div>
         <div id="rules"></div>
         <button id="addRule" style="width:100%;margin-top:2px">＋ ルール追加 <span id="slotInfo" class="hint"></span></button>
-        <div class="hint">行動は条件が満たせない時は自動でスキップ（次のルールへ）。順序が戦略です。</div>
+        <div class="hint">行動は条件を満たせない時は自動でスキップ（次のルールへ）。順序が戦略です。解禁で選べる行動・条件が増えます。</div>
       </div>
-      <div class="card shop">
+      <div class="card shop" id="shopCard" style="display:none">
         <div class="sect">錬金強化ショップ（業績で購入）</div>
         <div id="shop"></div>
       </div>
@@ -122,9 +116,9 @@
   <div class="box">
     <h2>HOMUNCULUS</h2>
     <p>君は錬金術師。盤面は直接動かさない。<span class="k">ホムンクルス</span>に「<span class="k">もし〜なら〜する</span>」のルール（ガンビット）を書き、自律で工房を回させる。</p>
-    <p><span class="k">脈</span>で黒い鉛を採り、<span class="k">坩堝</span>に入れる度に 黒→白→黄→赤 と精製が一段進む。<span class="k">赤(賢者の石)</span>を<span class="k">祭壇</span>へ運べば納品。</p>
-    <p>初期ルールは既に動く形で入れてある。まず<span class="k">▶再生</span>を押して観察し、詰まりを直し、<span class="k">業績</span>でホムンクルスや坩堝を増やそう。</p>
-    <p class="hint">狭い盤面に、どれだけ効率を詰め込めるか。</p>
+    <p>最初は<span class="k">鉛(黒)</span>を脈で拾って<span class="k">祭壇</span>へ納品するだけ。納品して実績を積むと、<span class="k">坩堝</span>・<span class="k">精製</span>・新しい条件・ルール枠が段階的に解禁され、白→黄→<span class="k">赤(賢者の石)</span>へと作れる物が増えていく。</p>
+    <p>坩堝は精製が終わると完成品を<span class="k">隣のマスへ自動排出</span>する。それを拾って次へ運ぶ。</p>
+    <p class="hint">狭い盤面に、どれだけ効率を詰め込めるか。まず▶再生で観察を。</p>
     <button class="primary" id="startBtn" style="width:100%;margin-top:8px">工房を開く</button>
   </div>
 </div>
@@ -132,26 +126,26 @@
 <script>
 "use strict";
 /* ============================================================
-   HOMUNCULUS — 錬金ガンビット工場 プロト v0.1
-   単一ファイル / Canvas + Web Audio
+   HOMUNCULUS — 錬金ガンビット工場 プロト v0.2
+   段階解禁 / 坩堝自動排出 / 単一ファイル
    ============================================================ */
 
 // ---------- 定数 ----------
 const COLS=7, ROWS=6, CELL=64;
-const TPS_BASE=8;            // 基本tick/秒
-const PROCESS_TICKS=16;      // 坩堝の処理時間
-const SPAWN_TICKS=12;        // 脈の再生成時間
-const STAGE_COLS=['#4a4658','#dcdce6','#e3c34a','#e0503a'];
+const TPS_BASE=8;
+const PROCESS_TICKS=16;
+const SPAWN_TICKS=12;
+const STAGE_COLS=['#6a6478','#dcdce6','#e3c34a','#e0503a'];
 const STAGE_NAME=['黒','白','黄','赤'];
+const STAGE_LABEL=['鉛(黒)','白(1段)','黄(2段)','賢者の石(赤)'];
 
-// 条件・行動の定義（ラベル）
+// 条件・行動マスター（解禁されたものだけUIに出る）
 const CONDS=[
   {k:'empty',    label:'手ぶらのとき'},
-  {k:'hold0',    label:'黒を持っているとき'},
+  {k:'holdAny',  label:'何か持っているとき'},
   {k:'hold1',    label:'白を持っているとき'},
   {k:'hold2',    label:'黄を持っているとき'},
   {k:'hold3',    label:'赤を持っているとき'},
-  {k:'holdAny',  label:'何か持っているとき'},
   {k:'doneEx',   label:'完成した坩堝があるとき'},
   {k:'freeEx',   label:'空いた坩堝があるとき'},
   {k:'always',   label:'常に'},
@@ -159,47 +153,95 @@ const CONDS=[
 const ACTS=[
   {k:'pick',    label:'素材を拾いに行く'},
   {k:'refine',  label:'坩堝で精製する'},
-  {k:'collect', label:'坩堝から回収する'},
   {k:'deliver', label:'祭壇へ納品する'},
   {k:'wait',    label:'待機する'},
 ];
 
-// ---------- ステージ目標 ----------
-const STAGES_GOAL=[3,6,10];  // 段階クリアに必要な累計納品
-let goalIndex=0;
+// ---------- 段階解禁テーブル ----------
+// targetStage:納品目標の段, quota:この段階クリアに必要な納品数
+// newActs/newConds:この段で追加解禁, slots:ルール枠下限, crucibles:盤面の坩堝数下限
+// shop:ショップ表示, preset:ホムンクルスに自動適用する推奨ルール(無ければ触らない)
+const TIERS=[
+  {targetStage:0, quota:3,  newActs:['pick','deliver','wait'], newConds:['empty','holdAny'],
+   slots:2, crucibles:0, shop:false,
+   preset:[['empty','pick'],['holdAny','deliver']],
+   msg:'まず鉛(黒)を拾って祭壇へ納品しよう'},
+  {targetStage:1, quota:4,  newActs:['refine'], newConds:['hold1'],
+   slots:3, crucibles:1, shop:false,
+   preset:[['holdAny','deliver'],['holdAny','refine'],['empty','pick']],
+   msg:'坩堝＋精製を解禁！鉛を精製して白(1段)を納品'},
+  {targetStage:2, quota:6,  newActs:[], newConds:['hold2'],
+   slots:3, crucibles:2, shop:true,
+   preset:null,
+   msg:'坩堝2基＆ショップ解禁！黄(2段)を納品'},
+  {targetStage:3, quota:8,  newActs:[], newConds:['hold3','doneEx','freeEx'],
+   slots:4, crucibles:2, shop:true,
+   preset:null,
+   msg:'最適化条件＋4枠解禁！賢者の石(赤)を納品'},
+  {targetStage:3, quota:24, newActs:[], newConds:[],
+   slots:5, crucibles:3, shop:true,
+   preset:null,
+   msg:'量産フェーズ。処理量を上げて賢者の石を量産せよ'},
+];
+const DEFAULT_PRESET=[['holdAny','deliver'],['holdAny','refine'],['empty','pick']];
 
 // ---------- 状態 ----------
-let S=null;          // シミュ状態
-let slotLimit=4;     // 1体あたりルール上限
+let S=null;
 let activeAgent=0;
+
+const CRUCIBLE_SPOTS=[{x:3,y:2},{x:3,y:1},{x:3,y:3},{x:3,y:4}];
+const AGENT_SPOTS=[{x:1,y:3},{x:1,y:1},{x:1,y:4}];
+const AGENT_COLORS=['#7ad0e0','#e0a86a','#9ad07a','#d07ab0'];
+
+function mkAgent(id,x,y,color,rules){
+  return {id,x,y,color,holding:null,rules,moveTimer:0,lastAction:'—'};
+}
+function presetRules(preset){return preset.map(([c,a])=>({cond:c,action:a}));}
 
 function freshState(){
   const grid=[];
   for(let y=0;y<ROWS;y++){const r=[];for(let x=0;x<COLS;x++)r.push('floor');grid.push(r);}
   const veins=[{x:0,y:1},{x:0,y:4}].map(v=>({x:v.x,y:v.y,ready:true,timer:0}));
-  const crucibles=[{x:3,y:1},{x:3,y:4}].map(c=>({x:c.x,y:c.y,content:null,processing:false,progress:0,done:false,outStage:null}));
   const altar={x:6,y:2};
   veins.forEach(v=>grid[v.y][v.x]='vein');
-  crucibles.forEach(c=>grid[c.y][c.x]='crucible');
   grid[altar.y][altar.x]='altar';
-  const presets=[
-    {cond:'hold3',  action:'deliver'},
-    {cond:'holdAny',action:'refine'},
-    {cond:'doneEx', action:'collect'},
-    {cond:'freeEx', action:'pick'},
-  ];
-  const agents=[mkAgent(0,1,2,'#7ad0e0',presets.map(r=>({...r})))];
-  return {grid,veins,crucibles,altar,agents,tick:0,delivered:0,points:0,spendable:0,
-          crucibleSpots:[{x:3,y:2},{x:3,y:3}], agentSpots:[{x:1,y:3},{x:1,y:0},{x:1,y:5}],
-          moveEvery:2};
-}
-function mkAgent(id,x,y,color,rules){
-  return {id,x,y,color,holding:null,rules,moveTimer:0,lastAction:'—'};
+  const st={
+    grid, veins, altar,
+    crucibles:[],
+    ground:{},               // "x,y" -> stage
+    spotsLeft:CRUCIBLE_SPOTS.slice(),
+    agentSpotsLeft:AGENT_SPOTS.slice(),
+    agents:[mkAgent(0,1,2,AGENT_COLORS[0],[])],
+    tick:0, tier:-1, target:0, quota:0, prog:0,
+    delivered:0, spendable:0,
+    acts:[], conds:[], slotLimit:0, moveEvery:2, shopOn:false,
+  };
+  applyTier(st,0);
+  return st;
 }
 
-// ---------- 経路探索 (BFS, 4近傍, 全マス歩行可) ----------
+function addCrucibleAt(st,sp){
+  st.grid[sp.y][sp.x]='crucible';
+  st.crucibles.push({x:sp.x,y:sp.y,content:null,processing:false,progress:0,done:false,outStage:null});
+}
+function ensureCrucibles(st,n){
+  while(st.crucibles.length<n && st.spotsLeft.length){ addCrucibleAt(st, st.spotsLeft.shift()); }
+}
+
+function applyTier(st,i){
+  const t=TIERS[i];
+  st.tier=i;
+  for(const a of t.newActs) if(!st.acts.includes(a)) st.acts.push(a);
+  for(const c of t.newConds) if(!st.conds.includes(c)) st.conds.push(c);
+  st.slotLimit=Math.max(st.slotLimit,t.slots);
+  st.target=t.targetStage; st.quota=t.quota; st.prog=0;
+  ensureCrucibles(st,t.crucibles);
+  st.shopOn=t.shop;
+  if(t.preset){ for(const ag of st.agents) ag.rules=presetRules(t.preset); }
+}
+
+// ---------- 経路探索 (BFS) ----------
 function bfsNextStep(start,predicate){
-  // 戻り値: {arrived:bool, step:{x,y}|null}
   if(predicate(start.x,start.y)) return {arrived:true,step:null};
   const seen=new Set([start.x+','+start.y]);
   const q=[{x:start.x,y:start.y,first:null}];
@@ -217,19 +259,25 @@ function bfsNextStep(start,predicate){
       q.push({x:nx,y:ny,first});
     }
   }
-  return {arrived:false,step:null}; // 到達不能
+  return {arrived:false,step:null};
 }
 
-// ---------- 行動の実行可能判定 ----------
-function existsVeinReady(st){return st.veins.some(v=>v.ready);}
+// ---------- 判定 ----------
+function veinReadyHere(st,x,y){return st.veins.some(v=>v.x===x&&v.y===y&&v.ready);}
+function groundHere(st,x,y){return st.ground[x+','+y];}
+function pickableHere(st,x,y){return veinReadyHere(st,x,y) || (groundHere(st,x,y)!==undefined);}
+function existsPickable(st){
+  if(st.veins.some(v=>v.ready))return true;
+  return Object.keys(st.ground).length>0;
+}
 function existsFreeCrucible(st){return st.crucibles.some(c=>c.content===null&&!c.processing&&!c.done);}
 function existsDoneCrucible(st){return st.crucibles.some(c=>c.done);}
+
 function actionExecutable(ag,act,st){
   switch(act){
-    case 'pick':    return ag.holding===null && existsVeinReady(st);
+    case 'pick':    return ag.holding===null && existsPickable(st);
     case 'refine':  return ag.holding!==null && ag.holding<3 && existsFreeCrucible(st);
-    case 'collect': return ag.holding===null && existsDoneCrucible(st);
-    case 'deliver': return ag.holding===3;
+    case 'deliver': return ag.holding===st.target;
     case 'wait':    return true;
   }
   return false;
@@ -237,11 +285,10 @@ function actionExecutable(ag,act,st){
 function condTrue(ag,cond,st){
   switch(cond){
     case 'empty':   return ag.holding===null;
-    case 'hold0':   return ag.holding===0;
+    case 'holdAny': return ag.holding!==null;
     case 'hold1':   return ag.holding===1;
     case 'hold2':   return ag.holding===2;
     case 'hold3':   return ag.holding===3;
-    case 'holdAny': return ag.holding!==null;
     case 'doneEx':  return existsDoneCrucible(st);
     case 'freeEx':  return existsFreeCrucible(st);
     case 'always':  return true;
@@ -255,29 +302,34 @@ function evalGambit(ag,st){
   return 'wait';
 }
 
-// ---------- 行動実行（移動 or 相互作用）----------
+// ---------- 行動 ----------
 function nearestPred(act,st){
   switch(act){
-    case 'pick':    return (x,y)=>st.veins.some(v=>v.x===x&&v.y===y&&v.ready);
+    case 'pick':    return (x,y)=>pickableHere(st,x,y);
     case 'refine':  return (x,y)=>st.crucibles.some(c=>c.x===x&&c.y===y&&c.content===null&&!c.processing&&!c.done);
-    case 'collect': return (x,y)=>st.crucibles.some(c=>c.x===x&&c.y===y&&c.done);
     case 'deliver': return (x,y)=>st.altar.x===x&&st.altar.y===y;
   }
   return ()=>false;
 }
 function doInteract(ag,act,st){
   if(act==='pick'){
-    const v=st.veins.find(v=>v.x===ag.x&&v.y===ag.y&&v.ready);
-    if(v){v.ready=false;v.timer=0;ag.holding=0;}
+    if(ag.holding!==null)return;
+    if(veinReadyHere(st,ag.x,ag.y)){
+      const v=st.veins.find(v=>v.x===ag.x&&v.y===ag.y);
+      v.ready=false;v.timer=0;ag.holding=0;
+    }else{
+      const key=ag.x+','+ag.y;
+      if(st.ground[key]!==undefined){ag.holding=st.ground[key];delete st.ground[key];}
+    }
   }else if(act==='refine'){
     const c=st.crucibles.find(c=>c.x===ag.x&&c.y===ag.y&&c.content===null&&!c.processing&&!c.done);
-    if(c&&ag.holding!==null){c.content=ag.holding;c.processing=true;c.progress=0;ag.holding=null;}
-  }else if(act==='collect'){
-    const c=st.crucibles.find(c=>c.x===ag.x&&c.y===ag.y&&c.done);
-    if(c){ag.holding=c.outStage;c.done=false;c.outStage=null;c.content=null;}
+    if(c&&ag.holding!==null&&ag.holding<3){c.content=ag.holding;c.processing=true;c.progress=0;ag.holding=null;}
   }else if(act==='deliver'){
-    if(st.altar.x===ag.x&&st.altar.y===ag.y&&ag.holding===3){
-      ag.holding=null;st.delivered++;st.points++;st.spendable++;onDeliver();
+    if(st.altar.x===ag.x&&st.altar.y===ag.y&&ag.holding===st.target){
+      ag.holding=null;st.delivered++;st.spendable++;st.prog++;
+      const tierUp = st.prog>=st.quota && st.tier<TIERS.length-1;
+      if(tierUp) applyTier(st, st.tier+1);
+      onDeliver(tierUp);
     }
   }
 }
@@ -290,19 +342,32 @@ function actAgent(ag,st){
   if(res.arrived){
     doInteract(ag,act,st);
   }else if(res.step){
-    // 移動は moveEvery でゲート
     if(++ag.moveTimer>=st.moveEvery){ag.moveTimer=0;ag.x=res.step.x;ag.y=res.step.y;}
   }
 }
 
-// ---------- 1tick 進める ----------
+// 坩堝の自動排出：完成品を隣の空き床へ
+function tryEject(st,c){
+  const dirs=[[1,0],[-1,0],[0,1],[0,-1]];
+  for(const[dx,dy]of dirs){
+    const nx=c.x+dx, ny=c.y+dy;
+    if(nx<0||ny<0||nx>=COLS||ny>=ROWS)continue;
+    if(st.grid[ny][nx]!=='floor')continue;
+    const key=nx+','+ny;
+    if(st.ground[key]!==undefined)continue;
+    st.ground[key]=c.outStage;
+    c.done=false;c.outStage=null;c.content=null;
+    return true;
+  }
+  return false; // 出口が塞がっていれば保持（バックプレッシャー）
+}
+
 function stepSim(st){
-  // 機械の更新
   for(const v of st.veins){ if(!v.ready){ if(++v.timer>=SPAWN_TICKS){v.ready=true;v.timer=0;} } }
   for(const c of st.crucibles){
     if(c.processing){ if(++c.progress>=PROCESS_TICKS){c.processing=false;c.done=true;c.outStage=Math.min(3,c.content+1);} }
+    if(c.done){ tryEject(st,c); }
   }
-  // エージェント（順次評価＝資源の取り合いを自然に処理）
   for(const ag of st.agents) actAgent(ag,st);
   st.tick++;
 }
@@ -311,9 +376,12 @@ function stepSim(st){
 //  描画
 // ============================================================
 const cv=document.getElementById('cv'), ctx=cv.getContext('2d');
+function roundRect(x,y,w,h,r){ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);
+  ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath();}
+function stageDot(cx,cy,st,r){ctx.fillStyle=STAGE_COLS[st];ctx.beginPath();ctx.arc(cx,cy,r,0,7);ctx.fill();
+  ctx.strokeStyle='#0006';ctx.lineWidth=1;ctx.stroke();}
 function draw(){
   ctx.clearRect(0,0,cv.width,cv.height);
-  // 床グリッド
   for(let y=0;y<ROWS;y++)for(let x=0;x<COLS;x++){
     ctx.fillStyle=((x+y)%2)?'#15111e':'#191425';
     ctx.fillRect(x*CELL,y*CELL,CELL,CELL);
@@ -325,9 +393,8 @@ function draw(){
   for(const v of S.veins){
     const cx=v.x*CELL+CELL/2, cy=v.y*CELL+CELL/2;
     ctx.fillStyle='#2c2740';roundRect(v.x*CELL+6,v.y*CELL+6,CELL-12,CELL-12,8);ctx.fill();
-    ctx.fillStyle='#5b5475';ctx.font='10px sans-serif';ctx.textAlign='center';ctx.fillText('脈',cx,v.y*CELL+18);
-    if(v.ready){ ctx.fillStyle=STAGE_COLS[0];ctx.beginPath();ctx.arc(cx,cy+4,10,0,7);ctx.fill();
-      ctx.strokeStyle='#0006';ctx.stroke(); }
+    ctx.fillStyle='#6b6488';ctx.font='10px sans-serif';ctx.textAlign='center';ctx.fillText('脈',cx,v.y*CELL+18);
+    if(v.ready) stageDot(cx,cy+4,0,10);
   }
   // 坩堝
   for(const c of S.crucibles){
@@ -336,14 +403,12 @@ function draw(){
     ctx.strokeStyle='#6b5530';ctx.lineWidth=2;roundRect(x+6,y+6,CELL-12,CELL-12,8);ctx.stroke();
     ctx.fillStyle='#9a7c44';ctx.font='10px sans-serif';ctx.textAlign='center';ctx.fillText('坩堝',cx,y+18);
     if(c.processing){
-      ctx.fillStyle=STAGE_COLS[c.content];ctx.beginPath();ctx.arc(cx,cy+6,9,0,7);ctx.fill();
+      stageDot(cx,cy+6,c.content,9);
       const w=(CELL-20)*(c.progress/PROCESS_TICKS);
       ctx.fillStyle='#3a3050';ctx.fillRect(x+10,y+CELL-14,CELL-20,5);
       ctx.fillStyle=STAGE_COLS[Math.min(3,c.content+1)];ctx.fillRect(x+10,y+CELL-14,w,5);
     }else if(c.done){
-      ctx.save();ctx.shadowColor=STAGE_COLS[c.outStage];ctx.shadowBlur=12;
-      ctx.fillStyle=STAGE_COLS[c.outStage];ctx.beginPath();ctx.arc(cx,cy+6,11,0,7);ctx.fill();ctx.restore();
-      ctx.strokeStyle='#fff8';ctx.stroke();
+      ctx.save();ctx.shadowColor=STAGE_COLS[c.outStage];ctx.shadowBlur=12;stageDot(cx,cy+6,c.outStage,11);ctx.restore();
     }
   }
   // 祭壇
@@ -351,7 +416,14 @@ function draw(){
    ctx.save();ctx.shadowColor='#c9a24a';ctx.shadowBlur=10;
    ctx.fillStyle='#3a2f12';roundRect(x+6,y+6,CELL-12,CELL-12,8);ctx.fill();ctx.restore();
    ctx.strokeStyle='#c9a24a';ctx.lineWidth=2;roundRect(x+6,y+6,CELL-12,CELL-12,8);ctx.stroke();
-   ctx.fillStyle='#c9a24a';ctx.font='10px sans-serif';ctx.textAlign='center';ctx.fillText('祭壇',cx,cy+4);}
+   ctx.fillStyle='#c9a24a';ctx.font='10px sans-serif';ctx.textAlign='center';ctx.fillText('祭壇',cx,cy+4);
+   // 目標段の小マーク
+   stageDot(cx,y+CELL-16,S.target,6);}
+  // 床の素材（自動排出された物）
+  for(const key in S.ground){
+    const [gx,gy]=key.split(',').map(Number);
+    stageDot(gx*CELL+CELL/2, gy*CELL+CELL/2, S.ground[key], 8);
+  }
   // エージェント
   for(const ag of S.agents){
     const cx=ag.x*CELL+CELL/2, cy=ag.y*CELL+CELL/2;
@@ -359,14 +431,9 @@ function draw(){
     ctx.fillStyle=ag.color;ctx.beginPath();ctx.arc(cx,cy,15,0,7);ctx.fill();ctx.restore();
     ctx.fillStyle='#1a1626';ctx.beginPath();ctx.arc(cx-5,cy-3,2.3,0,7);ctx.arc(cx+5,cy-3,2.3,0,7);ctx.fill();
     if(ag.id===activeAgent){ctx.strokeStyle='#fff';ctx.lineWidth=2;ctx.beginPath();ctx.arc(cx,cy,17,0,7);ctx.stroke();}
-    if(ag.holding!==null){
-      ctx.fillStyle=STAGE_COLS[ag.holding];ctx.beginPath();ctx.arc(cx,cy-20,7,0,7);ctx.fill();
-      ctx.strokeStyle='#0007';ctx.lineWidth=1;ctx.stroke();
-    }
+    if(ag.holding!==null) stageDot(cx,cy-20,ag.holding,7);
   }
 }
-function roundRect(x,y,w,h,r){ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);
-  ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath();}
 
 // ============================================================
 //  ループ
@@ -378,9 +445,7 @@ function loop(t){
   const dt=(t-lastT)/1000;lastT=t;
   frames++;fpsT+=dt;if(fpsT>=0.5){fps=Math.round(frames/fpsT);frames=0;fpsT=0;}
   if(running){
-    acc+=dt;
-    const interval=1/(TPS_BASE*speed);
-    let guard=0;
+    acc+=dt;const interval=1/(TPS_BASE*speed);let guard=0;
     while(acc>=interval && guard<20){acc-=interval;stepSim(S);guard++;}
   }
   draw();
@@ -392,10 +457,18 @@ function loop(t){
 // ============================================================
 const $=id=>document.getElementById(id);
 function refreshHUD(){
-  $('delivered').textContent=S.delivered;
+  $('goalText').textContent=`${STAGE_LABEL[S.target]} を ${S.quota} 納品`;
+  $('prog').textContent=`${Math.min(S.prog,S.quota)}/${S.quota}`;
   $('points').textContent=S.spendable;
-  $('goalText').textContent=`賢者の石(赤)を ${STAGES_GOAL[goalIndex]} 個 納品`;
-  buildShop();
+  $('shopCard').style.display=S.shopOn?'block':'none';
+  buildLegend();buildShop();buildRules();
+}
+function buildLegend(){
+  const L=$('legend');
+  let chips='';
+  for(let i=0;i<=3;i++) chips+=`<span class="chip"><span class="dot" style="background:${STAGE_COLS[i]}"></span>${STAGE_LABEL[i]}</span>`;
+  chips+=`<span class="chip">脈=採掘 / 坩堝=精製(段+1,完成品は隣へ自動排出) / 祭壇=納品</span>`;
+  L.innerHTML=chips;
 }
 function buildTabs(){
   const t=$('tabs');t.innerHTML='';
@@ -408,9 +481,10 @@ function buildTabs(){
     t.appendChild(b);
   });
 }
-function selectEl(options,val,onCh){
+function selectEl(master,allowed,val,onCh){
   const s=document.createElement('select');
-  options.forEach(o=>{const op=document.createElement('option');op.value=o.k;op.textContent=o.label;
+  const opts=master.filter(o=>allowed.includes(o.k) || o.k===val);
+  opts.forEach(o=>{const op=document.createElement('option');op.value=o.k;op.textContent=o.label;
     if(o.k===val)op.selected=true;s.appendChild(op);});
   s.onchange=()=>onCh(s.value);
   return s;
@@ -426,83 +500,66 @@ function buildRules(){
     const dn=document.createElement('button');dn.textContent='▼';dn.disabled=i===ag.rules.length-1;
     dn.onclick=()=>{[ag.rules[i+1],ag.rules[i]]=[ag.rules[i],ag.rules[i+1]];buildRules();};
     ord.appendChild(up);ord.appendChild(dn);row.appendChild(ord);
-    row.appendChild(selectEl(CONDS,r.cond,v=>r.cond=v));
+    row.appendChild(selectEl(CONDS,S.conds,r.cond,v=>r.cond=v));
     const ar=document.createElement('span');ar.className='arrow';ar.textContent='▶';row.appendChild(ar);
-    row.appendChild(selectEl(ACTS,r.action,v=>r.action=v));
+    row.appendChild(selectEl(ACTS,S.acts,r.action,v=>r.action=v));
     const del=document.createElement('button');del.className='del';del.textContent='✕';
     del.onclick=()=>{ag.rules.splice(i,1);buildRules();};
     row.appendChild(del);
     box.appendChild(row);
   });
-  $('slotInfo').textContent=`(${ag.rules.length}/${slotLimit})`;
-  $('addRule').disabled=ag.rules.length>=slotLimit;
+  $('slotInfo').textContent=`(${ag.rules.length}/${S.slotLimit})`;
+  $('addRule').disabled=ag.rules.length>=S.slotLimit;
 }
 $('addRule').onclick=()=>{
   const ag=S.agents[activeAgent];
-  if(ag.rules.length>=slotLimit)return;
-  ag.rules.push({cond:'always',action:'wait'});buildRules();
+  if(ag.rules.length>=S.slotLimit)return;
+  ag.rules.push({cond:S.conds[0]||'always',action:'wait'});buildRules();
 };
 
 // ---------- ショップ ----------
 function shopItems(){
   return [
-    {id:'slot', name:'ルールスロット +1', cost:2+slotLimit-4,
-     can:()=>true, buy:()=>{slotLimit++;buildRules();}},
-    {id:'speed',name:'移動速度を上げる', cost:3,
+    {name:'ルールスロット +1', cost:2,
+     can:()=>true, buy:()=>{S.slotLimit++;}},
+    {name:'移動速度を上げる', cost:3,
      can:()=>S.moveEvery>1, buy:()=>{S.moveEvery=Math.max(1,S.moveEvery-1);}},
-    {id:'cru',  name:'坩堝を増設する', cost:4,
-     can:()=>S.crucibleSpots.length>0, buy:()=>{
-        const sp=S.crucibleSpots.shift();
-        S.grid[sp.y][sp.x]='crucible';
-        S.crucibles.push({x:sp.x,y:sp.y,content:null,processing:false,progress:0,done:false,outStage:null});
-     }},
-    {id:'homu', name:'ホムンクルスを増やす', cost:6,
-     can:()=>S.agentSpots.length>0, buy:()=>{
-        const sp=S.agentSpots.shift();
-        const colors=['#e0a86a','#9ad07a','#d07ab0','#b0a0e0'];
+    {name:'坩堝を増設する', cost:4,
+     can:()=>S.spotsLeft.length>0, buy:()=>{ addCrucibleAt(S, S.spotsLeft.shift()); }},
+    {name:'ホムンクルスを増やす', cost:6,
+     can:()=>S.agentSpotsLeft.length>0, buy:()=>{
+        const sp=S.agentSpotsLeft.shift();
         const id=S.agents.length;
-        const rules=[
-          {cond:'hold3',action:'deliver'},
-          {cond:'holdAny',action:'refine'},
-          {cond:'doneEx',action:'collect'},
-          {cond:'freeEx',action:'pick'},
-        ];
-        S.agents.push(mkAgent(id,sp.x,sp.y,colors[(id-1)%colors.length],rules));
+        const rules=presetRules(DEFAULT_PRESET).slice(0,S.slotLimit);
+        S.agents.push(mkAgent(id,sp.x,sp.y,AGENT_COLORS[id%AGENT_COLORS.length],rules));
         buildTabs();
      }},
   ];
 }
 function buildShop(){
   const box=$('shop');box.innerHTML='';
+  if(!S.shopOn)return;
   shopItems().forEach(it=>{
     const b=document.createElement('button');
-    const affordable=S.spendable>=it.cost && it.can();
+    const ok=S.spendable>=it.cost && it.can();
     b.innerHTML=`<span>${it.name}</span><span class="cost">業績 ${it.cost}</span>`;
-    b.disabled=!affordable;
+    b.disabled=!ok;
     b.onclick=()=>{ if(S.spendable>=it.cost && it.can()){ S.spendable-=it.cost; it.buy(); refreshHUD(); } };
     box.appendChild(b);
   });
 }
 
-// ---------- 納品イベント ----------
+// ---------- 納品 / 段階クリア ----------
 let toastT=null;
 function showToast(msg){
   const el=$('toast');el.textContent=msg;el.style.opacity='1';
-  clearTimeout(toastT);toastT=setTimeout(()=>el.style.opacity='0',1400);
+  clearTimeout(toastT);toastT=setTimeout(()=>el.style.opacity='0',1800);
 }
-function onDeliver(){
+function onDeliver(tierUp){
   bell();
+  if(tierUp){ buildTabs(); showToast('段階クリア！ '+TIERS[S.tier].msg); }
+  else showToast(STAGE_LABEL[S.target]+' を納品 (+1業績)');
   refreshHUD();
-  if(S.delivered>=STAGES_GOAL[goalIndex]){
-    if(goalIndex<STAGES_GOAL.length-1){
-      goalIndex++;showToast('段階クリア！次の目標へ');
-    }else{
-      showToast('全目標達成！工房を拡張し続けよう');
-    }
-    refreshHUD();
-  }else{
-    showToast('賢者の石を納品！ +1業績');
-  }
 }
 
 // ---------- コントロール ----------
@@ -516,68 +573,57 @@ $('dbgBtn').onclick=()=>{dbgOn=!dbgOn;$('dbg').style.display=dbgOn?'block':'none
   $('dbgBtn').classList.toggle('on',dbgOn);};
 function updateDbg(){
   const a=S.agents.map(g=>`H${g.id+1}(${g.x},${g.y}) ${g.holding!==null?STAGE_NAME[g.holding]:'-'} :${g.lastAction}`).join('\n');
-  $('dbg').textContent=`fps ${fps}  tick ${S.tick}  spd ${speed}x\n納品 ${S.delivered} 業績 ${S.spendable}\n`+a;
+  $('dbg').textContent=`fps ${fps}  tick ${S.tick}  spd ${speed}x\nT${S.tier} 目標${STAGE_NAME[S.target]} ${S.prog}/${S.quota} 業績${S.spendable}\n床${Object.keys(S.ground).length} 坩堝${S.crucibles.length}\n`+a;
 }
 function doReset(){
   running=false;$('play').textContent='▶ 再生';$('play').classList.remove('on');
-  goalIndex=0;slotLimit=4;activeAgent=0;
+  activeAgent=0;
   S=freshState();
-  buildTabs();buildRules();refreshHUD();draw();
+  buildTabs();refreshHUD();draw();
 }
 
 // ============================================================
-//  Web Audio（プロシージャル環境音＋納品ベル）
+//  Web Audio
 // ============================================================
-let actx=null, masterGain=null, droneNodes=[], muted=false, ambientTimer=null;
+let actx=null, masterGain=null, muted=false, ambientTimer=null;
 function ensureAudio(){
   if(actx)return;
   try{
     actx=new (window.AudioContext||window.webkitAudioContext)();
     masterGain=actx.createGain();masterGain.gain.value=muted?0:0.16;masterGain.connect(actx.destination);
-    // ドローン（低音の持続音＋ゆらぎ）
-    const base=[55,82.4,110]; // A1, E2, A2
+    const base=[55,82.4,110];
     base.forEach((f,i)=>{
       const o=actx.createOscillator();o.type=i===2?'triangle':'sine';o.frequency.value=f;
-      const g=actx.createGain();g.gain.value=0.0;
+      const g=actx.createGain();g.gain.value=0.05;
       const lfo=actx.createOscillator();lfo.frequency.value=0.05+i*0.03;
       const lg=actx.createGain();lg.gain.value=0.04;
       lfo.connect(lg);lg.connect(g.gain);
       o.connect(g);g.connect(masterGain);o.start();lfo.start();
-      g.gain.value=0.05;
-      droneNodes.push(o,lfo);
     });
     scheduleAmbient();
   }catch(e){console.warn('audio init failed',e);}
 }
 function scheduleAmbient(){
-  // たまに鳴る錬金釜の気泡音
   if(!actx)return;
   const notes=[220,277.2,329.6,440,554.4];
-  const n=notes[Math.floor(Math.random()*notes.length)];
-  softTone(n,0.5,0.04);
+  softTone(notes[Math.floor(Math.random()*notes.length)],0.5,0.04);
   ambientTimer=setTimeout(scheduleAmbient, 2500+Math.random()*3000);
 }
 function softTone(freq,dur,vol){
   if(!actx||muted)return;
   const o=actx.createOscillator();o.type='sine';o.frequency.value=freq;
-  const g=actx.createGain();g.gain.value=0;
-  o.connect(g);g.connect(masterGain);
+  const g=actx.createGain();g.gain.value=0;o.connect(g);g.connect(masterGain);
   const now=actx.currentTime;
   g.gain.linearRampToValueAtTime(vol,now+0.05);
   g.gain.exponentialRampToValueAtTime(0.0001,now+dur);
   o.start(now);o.stop(now+dur+0.05);
 }
-function bell(){ // 納品ベル（明るい和音）
-  if(!actx||muted)return;
-  [523.3,659.3,784.0].forEach((f,i)=>setTimeout(()=>softTone(f,0.9,0.07),i*60));
-}
+function bell(){ if(!actx||muted)return; [523.3,659.3,784.0].forEach((f,i)=>setTimeout(()=>softTone(f,0.9,0.07),i*60)); }
 $('mute').onclick=()=>{
   muted=!muted;$('mute').textContent=muted?'♪ 音 OFF':'♪ 音 ON';
   $('mute').classList.toggle('on',!muted);
   if(masterGain)masterGain.gain.value=muted?0:0.16;
 };
-
-// オーディオのライフサイクル（iOS/離脱対応）
 function suspendAudio(){if(actx&&actx.state==='running')actx.suspend();}
 function resumeAudio(){if(actx&&actx.state==='suspended'&&!document.hidden)actx.resume();}
 document.addEventListener('visibilitychange',()=>{document.hidden?suspendAudio():resumeAudio();});
@@ -590,14 +636,13 @@ window.addEventListener('beforeunload',()=>{if(actx)actx.close();});
 $('startBtn').onclick=()=>{$('intro').style.display='none';ensureAudio();$('mute').classList.add('on');};
 function boot(){
   S=freshState();
-  buildTabs();buildRules();refreshHUD();draw();
+  buildTabs();refreshHUD();draw();
   requestAnimationFrame(loop);
 }
 boot();
 
-// ---- node 検証用にエクスポート（ブラウザでは無視）----
 if(typeof module!=='undefined'&&module.exports){
-  module.exports={freshState,stepSim,evalGambit,bfsNextStep,STAGE_NAME};
+  module.exports={freshState,stepSim,applyTier,TIERS,STAGE_NAME};
 }
 </script>
 </body>
