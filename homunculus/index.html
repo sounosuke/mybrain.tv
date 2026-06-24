@@ -65,7 +65,7 @@
 <body>
 <div id="app">
   <h1>HOMUNCULUS</h1>
-  <div class="tag">錬金ガンビット工場 — プロトタイプ v0.2（タイトル仮）</div>
+  <div class="tag">錬金ガンビット工場 — プロトタイプ v0.2.2（タイトル仮）</div>
   <div class="wrap">
     <div class="left">
       <div class="card">
@@ -167,19 +167,19 @@ const TIERS=[
    preset:[['empty','pick'],['holdAny','deliver']],
    msg:'まず鉛(黒)を拾って祭壇へ納品しよう'},
   {targetStage:1, quota:4,  newActs:['refine'], newConds:['hold1'],
-   slots:3, crucibles:1, shop:false,
-   preset:[['holdAny','deliver'],['holdAny','refine'],['empty','pick']],
-   msg:'坩堝＋精製を解禁！鉛を精製して白(1段)を納品'},
-  {targetStage:2, quota:6,  newActs:[], newConds:['hold2'],
-   slots:3, crucibles:2, shop:true,
+   slots:3, crucibles:1, shop:true,
    preset:null,
-   msg:'坩堝2基＆ショップ解禁！黄(2段)を納品'},
+   msg:'坩堝＋精製＋ショップを解禁！「何か持→精製」ルールを自分で足して白(1段)を作ろう'},
+  {targetStage:2, quota:6,  newActs:[], newConds:['hold2'],
+   slots:3, crucibles:1, shop:true,
+   preset:null,
+   msg:'黄(2段)を納品。設備や人手はショップで増やそう'},
   {targetStage:3, quota:8,  newActs:[], newConds:['hold3','doneEx','freeEx'],
-   slots:4, crucibles:2, shop:true,
+   slots:4, crucibles:1, shop:true,
    preset:null,
    msg:'最適化条件を解禁！賢者の石(赤)を納品'},
   {targetStage:3, quota:24, newActs:[], newConds:[],
-   slots:5, crucibles:3, shop:true,
+   slots:5, crucibles:1, shop:true,
    preset:null,
    msg:'量産フェーズ。処理量を上げて賢者の石を量産せよ'},
 ];
@@ -529,7 +529,8 @@ function shopItems(){
      can:()=>S.agentSpotsLeft.length>0, buy:()=>{
         const sp=S.agentSpotsLeft.shift();
         const id=S.agents.length;
-        const rules=presetRules(DEFAULT_PRESET).slice(0,S.slotLimit);
+        const src=(S.agents[0]&&S.agents[0].rules)||[];
+        const rules=src.slice(0,S.slotLimit).map(r=>({cond:r.cond,action:r.action}));
         S.agents.push(mkAgent(id,sp.x,sp.y,AGENT_COLORS[id%AGENT_COLORS.length],rules));
         buildTabs();
      }},
