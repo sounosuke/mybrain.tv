@@ -3,12 +3,12 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-<title>HOMUNCULUS — 錬金基板工場 (仮)</title>
+<title>HOMUNCULUS — AI戦闘アリーナ (仮)</title>
 <style>
   :root{
     --bg:#15131c; --panel:#1f1b2b; --panel2:#272036; --ink:#e9e4f5; --sub:#a99fc4;
     --line:#3a3350; --accent:#c9a24a; --accent2:#7a5cc4; --good:#5fd08a; --bad:#e0617a;
-    --mS:#e3c34a; --mM:#c8ccd6; --mStone:#e0503a;
+    --t0:#5bc8e0; --t1:#e0617a;
   }
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);
@@ -18,12 +18,12 @@
   h1{font-size:15px;letter-spacing:.18em;margin:10px 2px 2px;color:var(--accent);font-weight:700}
   .tag{font-size:11px;color:var(--sub);margin:0 2px 8px}
   .wrap{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-start}
-  .left{flex:1 1 360px;min-width:300px}
-  .right{flex:1 1 320px;min-width:300px}
+  .left{flex:1 1 380px;min-width:300px}
+  .right{flex:1 1 330px;min-width:300px}
   .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px;margin-bottom:10px}
-  canvas{width:100%;height:auto;display:block;border-radius:10px;background:#100e17}
-  .goal{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:13px;margin-bottom:8px;flex-wrap:wrap}
-  .goal b{color:var(--accent)}
+  canvas{width:100%;height:auto;display:block;border-radius:10px;background:#0d0b14}
+  .status{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:13px;margin-bottom:8px;flex-wrap:wrap}
+  .status b{color:var(--accent)}
   .pill{background:var(--panel2);border:1px solid var(--line);border-radius:999px;padding:3px 10px;font-size:12px}
   .row{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
   button{font-family:inherit;font-size:13px;color:var(--ink);background:var(--panel2);
@@ -31,22 +31,10 @@
   button:hover{border-color:var(--accent2)}
   button.primary{background:var(--accent2);border-color:var(--accent2);font-weight:700}
   button.on{background:var(--accent);border-color:var(--accent);color:#231a06;font-weight:700}
-  button:disabled{opacity:.4;cursor:not-allowed}
   .sect{font-size:11px;letter-spacing:.12em;color:var(--sub);margin:2px 2px 8px;text-transform:uppercase}
   .tabs{display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap}
   .tab{padding:6px 10px;border-radius:8px;font-size:12px;border:1px solid var(--line);background:var(--panel2);cursor:pointer}
   .tab.active{background:var(--accent2);border-color:var(--accent2);font-weight:700}
-  .chipwrap{display:flex;gap:10px;flex-wrap:wrap}
-  .chipgrid{display:grid;grid-template-columns:1fr 1fr;gap:6px;flex:1 1 240px}
-  .cell{background:var(--panel2);border:1px solid var(--line);border-radius:9px;padding:6px}
-  .cell.start{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset}
-  .cell .ch{display:flex;justify-content:space-between;align-items:center;font-size:11px;color:var(--sub);margin-bottom:4px}
-  .cell select{width:100%;font-family:inherit;font-size:11px;color:var(--ink);background:#171323;
-    border:1px solid var(--line);border-radius:6px;padding:5px 3px;margin-top:3px}
-  .cell .wire{display:flex;gap:4px;align-items:center;font-size:10px;color:var(--sub);margin-top:3px}
-  .cell .wire b{color:var(--ink)}
-  .startbtn{font-size:10px;padding:2px 6px;border-radius:5px}
-  .legend{display:flex;gap:10px;flex-wrap:wrap;font-size:11px;color:var(--sub);margin-top:6px}
   #chip{width:100%;height:auto;display:block;background:#13101c;border:1px solid var(--line);border-radius:10px;margin-bottom:8px;touch-action:manipulation}
   #chip rect,#chip circle{cursor:pointer}
   #inspector{margin-bottom:6px}
@@ -55,37 +43,33 @@
   .ib{font-size:12px;padding:6px 10px;border-radius:7px}
   #opSel{width:100%;font-family:inherit;font-size:12px;color:var(--ink);background:#171323;border:1px solid var(--line);border-radius:7px;padding:7px 5px}
   .hint{font-size:12px;color:var(--sub);line-height:1.6;margin-top:6px}
-  #dbg{position:fixed;left:6px;bottom:6px;font:11px/1.4 monospace;color:#7fe;background:#000a;
-    padding:4px 7px;border-radius:6px;pointer-events:none;white-space:pre;display:none;z-index:50}
+  #dbg{position:fixed;left:6px;bottom:6px;font:11px/1.4 monospace;color:#7fe;background:#000a;padding:4px 7px;border-radius:6px;pointer-events:none;white-space:pre;display:none;z-index:50}
   .modal{position:fixed;inset:0;background:#0b0910ee;display:flex;align-items:center;justify-content:center;z-index:100;padding:18px}
   .modal .box{background:var(--panel);border:1px solid var(--line);border-radius:14px;max-width:440px;padding:20px}
   .modal h2{margin:0 0 6px;color:var(--accent);font-size:17px;letter-spacing:.08em}
   .modal p{font-size:13px;line-height:1.7;margin:8px 0}
   .modal .k{color:var(--accent);font-weight:700}
-  .toast{position:fixed;left:50%;top:14px;transform:translateX(-50%);background:var(--good);color:#06210f;
-    padding:7px 16px;border-radius:999px;font-size:13px;font-weight:700;z-index:80;opacity:0;transition:opacity .25s;pointer-events:none;max-width:90%;text-align:center}
+  .toast{position:fixed;left:50%;top:14px;transform:translateX(-50%);background:var(--good);color:#06210f;padding:7px 16px;border-radius:999px;font-size:13px;font-weight:700;z-index:80;opacity:0;transition:opacity .25s;pointer-events:none;max-width:90%;text-align:center}
 </style>
 </head>
 <body>
 <div id="app">
   <h1>HOMUNCULUS</h1>
-  <div class="tag">錬金基板工場 — プロト v0.4.1（カルネージハート型・タイトル仮）</div>
+  <div class="tag">AI戦闘アリーナ — プロト v0.5（カルネージハートEXA型・タイトル仮）</div>
   <div class="wrap">
     <div class="left">
       <div class="card">
-        <div class="goal">
-          <div>目標：<b id="goalText">賢者の石を 5 個 納品</b></div>
-          <div class="row"><span class="pill">納品 <b id="delivered">0</b></span></div>
+        <div class="status">
+          <div><span style="color:var(--t0)">自軍</span> <b id="pCount">2</b> vs <span style="color:var(--t1)">敵</span> <b id="eCount">2</b></div>
+          <div class="row"><span class="pill" id="phaseTxt">編集中</span></div>
         </div>
-        <canvas id="cv" width="540" height="324"></canvas>
-        <div class="legend" id="legend"></div>
+        <canvas id="cv" width="480" height="340"></canvas>
       </div>
       <div class="card">
         <div class="row" style="justify-content:space-between">
           <div class="row">
-            <button id="play" class="primary">▶ 再生</button>
-            <button id="step">⏭ 1tick</button>
-            <button id="reset">⟲ リセット</button>
+            <button id="play" class="primary">▶ 戦闘開始</button>
+            <button id="reset">⟲ 配置に戻す</button>
           </div>
           <div class="row">
             <button id="spd">速度 1x</button>
@@ -97,14 +81,11 @@
     </div>
     <div class="right">
       <div class="card">
-        <div class="sect">ホムンクルスの基板（タップで配置・ポートから配線）</div>
+        <div class="sect">ホムンクルスのAI（条件→行動の基板・タップで配置/配線）</div>
         <div class="tabs" id="tabs"></div>
-        <svg id="chip" viewBox="0 0 300 272"></svg>
+        <svg id="chip" viewBox="0 0 320 320"></svg>
         <div id="inspector"></div>
-        <div class="row" style="margin-top:4px">
-          <button id="addHomu">＋ ホムンクルス追加</button>
-        </div>
-        <div class="hint">セルをタップ→下で中身(空/行動/条件)を選ぶ。配線は、条件の<span style="color:var(--good)">○</span>/<span style="color:var(--bad)">✕</span>、行動の<span style="color:#8a83a8">▶</span>ポートをタップ→繋ぎ先セルをタップ。金丸＝開始セル。4マスだから1体は単機能、複数を組み合わせる。</div>
+        <div class="hint">上から評価し、最初に到達した<b>行動</b>を実行。条件の<span style="color:var(--good)">○</span>/<span style="color:var(--bad)">✕</span>ポートをタップ→繋ぎ先セルをタップで配線。金丸＝開始セル。対象は当面「最も近い敵」。AIを直して<b>戦闘開始</b>で再戦。</div>
       </div>
     </div>
   </div>
@@ -114,458 +95,321 @@
 
 <div class="modal" id="intro">
   <div class="box">
-    <h2>HOMUNCULUS</h2>
-    <p>カルネージハート式。各<span class="k">ホムンクルス</span>の頭脳は<span class="k">2×2の基板</span>＝4ブロックと配線だけ。だから1体は<span class="k">単機能</span>。何体も組み合わせてラインを設計する。</p>
-    <p>レシピ：<span class="k">硫黄</span>と<span class="k">水銀</span>を別々に<span class="k">合成台</span>へ運び、揃うと<span class="k">賢者の石</span>になる。それを<span class="k">祭壇</span>へ納品。</p>
-    <p>最初から3体（硫黄投入・水銀投入・石納品）が配線済み。<span class="k">▶再生</span>でラインが回るのを見て、基板をいじって改造しよう。</p>
-    <button class="primary" id="startBtn" style="width:100%;margin-top:8px">工房を開く</button>
+    <h2>HOMUNCULUS — AI戦闘アリーナ</h2>
+    <p>カルネージハートEXA式。自軍2体の<span class="k">ホムンクルス</span>のAIを基板（条件→行動）で組み、<span class="k">戦闘開始</span>で敵AIと自律戦闘させる。直接操作は無し。</p>
+    <p>行動：<span class="k">接近 / 後退 / 撃つ / 待機</span>。条件：<span class="k">射程内？ / HPが低い？ / 敵が近い？</span> など。上から評価して最初の行動を実行。</p>
+    <p>最初から基本AIが入っている。まず戦って、負けたらAIを直す ── これを繰り返して敵を出し抜こう。</p>
+    <button class="primary" id="startBtn" style="width:100%;margin-top:8px">アリーナへ</button>
   </div>
 </div>
 
 <script>
 "use strict";
 /* ============================================================
-   HOMUNCULUS v0.4 — 錬金基板工場（カルネージハート型）
-   2×2チップ + 駅指向アクション + 硫黄+水銀→賢者の石
+   HOMUNCULUS v0.5 — AI戦闘アリーナ（カルネージハートEXA型）
+   ノードAI(条件→行動) × 2v2 自律戦闘
    ============================================================ */
+const W=480,H=340,BOT_R=14,MOVE=2.3,RANGE=150,ENEMY_NEAR=95,DMG=7,COOLDOWN=16,LOWHP=0.3,MAX_TICKS=2400;
+const TPS=30;
 
-const COLS=5, ROWS=3, CELL=108;
-const TPS_BASE=6, SPAWN_TICKS=10, PROCESS_TICKS=14, GOAL=5;
-
-const MAT_COL={S:'#e3c34a', M:'#c8ccd6', stone:'#e0503a'};
-const MAT_LABEL={S:'硫', M:'汞', stone:'石'};
-
-// ブロックの選択肢
 const ACT_OPS=[
-  {k:'takeS',    l:'硫黄脈から取る'},
-  {k:'takeM',    l:'水銀脈から取る'},
-  {k:'toSynth',  l:'合成台へ入れる'},
-  {k:'fromSynth',l:'合成台から取る'},
-  {k:'toAltar',  l:'祭壇へ納める'},
+  {k:'approach',l:'敵に接近'},
+  {k:'retreat', l:'敵から後退'},
+  {k:'shoot',   l:'撃つ'},
+  {k:'idle',    l:'待機'},
 ];
 const COND_OPS=[
-  {k:'empty',     l:'手ぶら？'},
-  {k:'hasS',      l:'硫黄を持ってる？'},
-  {k:'hasM',      l:'水銀を持ってる？'},
-  {k:'hasStone',  l:'石を持ってる？'},
-  {k:'stoneReady',l:'石が出来てる？'},
+  {k:'inRange',  l:'敵が射程内？'},
+  {k:'lowHP',    l:'自分のHPが低い？'},
+  {k:'enemyNear',l:'敵が近い？'},
+  {k:'always',   l:'常に'},
 ];
 
-const AGENT_COLORS=['#7ad0e0','#e0a86a','#9ad07a','#d07ab0','#c9a24a','#8fa0e0'];
 let S=null, activeAgent=0;
+let selectedCell=null, wiringFrom=null;
+let running=false, speed=1;
 
-// ---------- チップ生成ヘルパ ----------
+// ---------- AI基板 ----------
 function emptyCell(){return {kind:'empty',op:'',out:[-1,-1]};}
-function chip(cells,start){return {cells,start};}
-function feederChip(takeOp){
-  return chip([
-    {kind:'cond',op:'empty',out:[1,2]},      // 0: START 手ぶら？
-    {kind:'act', op:takeOp, out:[0,-1]},      // 1: 取る
-    {kind:'act', op:'toSynth',out:[0,-1]},    // 2: 合成台へ
-    emptyCell(),
-  ],0);
+function defaultPlayerChip(){
+  // 射程内→撃つ / それ以外→接近（素直で強い基本形。後退などはプレイヤーが追加して試す）
+  return {start:0,cells:[
+    {kind:'cond',op:'inRange', out:[1,2]},  //0
+    {kind:'act', op:'shoot',   out:[-1,-1]},//1
+    {kind:'act', op:'approach',out:[-1,-1]},//2
+    emptyCell(),emptyCell(),emptyCell(),emptyCell(),emptyCell(),emptyCell(),
+  ]};
 }
-function delivererChip(){
-  return chip([
-    {kind:'cond',op:'hasStone',out:[1,2]},    // 0: START 石持ってる？
-    {kind:'act', op:'toAltar', out:[0,-1]},   // 1: 納品
-    {kind:'act', op:'fromSynth',out:[0,-1]},  // 2: 合成台から取る
-    emptyCell(),
-  ],0);
+function defaultEnemyChip(){
+  // 敵が「近い」まで撃たない＝レンジを捨てた未熟AI（自軍がレンジ有利で勝てる）
+  return {start:0,cells:[
+    {kind:'cond',op:'enemyNear',out:[1,2]},
+    {kind:'act', op:'shoot',  out:[-1,-1]},
+    {kind:'act', op:'approach',out:[-1,-1]},
+    emptyCell(),emptyCell(),emptyCell(),emptyCell(),emptyCell(),emptyCell(),
+  ]};
 }
-
-function mkAgent(id,x,y,chipObj){
-  return {id,x,y,color:AGENT_COLORS[id%AGENT_COLORS.length],carry:null,chip:chipObj,pc:chipObj.start};
+function mkBot(id,team,x,y,chip){
+  return {id,team,x,y,hp:100,maxHp:100,reload:0,alive:true,chip,
+          color:team===0?'#5bc8e0':'#e0617a',home:{x,y}};
 }
-
 function freshState(){
-  const grid=[];
-  for(let y=0;y<ROWS;y++){const r=[];for(let x=0;x<COLS;x++)r.push('floor');grid.push(r);}
-  const veins=[{x:0,y:0,kind:'S',ready:true,timer:0},{x:0,y:2,kind:'M',ready:true,timer:0}];
-  const synth={x:2,y:1,s:false,m:false,processing:false,progress:0,stone:false};
-  const altar={x:4,y:1};
-  veins.forEach(v=>grid[v.y][v.x]='vein');
-  grid[synth.y][synth.x]='synth';
-  grid[altar.y][altar.x]='altar';
-  const agents=[
-    mkAgent(0,1,0,feederChip('takeS')),
-    mkAgent(1,1,2,feederChip('takeM')),
-    mkAgent(2,3,1,delivererChip()),
+  const bots=[
+    mkBot(0,0,70,110,defaultPlayerChip()),
+    mkBot(1,0,70,230,defaultPlayerChip()),
+    mkBot(2,1,410,110,defaultEnemyChip()),
+    mkBot(3,1,410,230,defaultEnemyChip()),
   ];
-  return {grid,veins,synth,altar,agents,tick:0,delivered:0};
+  bots[2].maxHp=bots[2].hp=85; bots[3].maxHp=bots[3].hp=85; // 敵はやや低HP
+  return {bots,shots:[],tick:0,phase:'ready',winner:-2};
 }
-
-// ---------- 経路探索 ----------
-function bfsNextStep(start,predicate){
-  if(predicate(start.x,start.y)) return {arrived:true,step:null};
-  const seen=new Set([start.x+','+start.y]);
-  const q=[{x:start.x,y:start.y,first:null}];
-  const dirs=[[1,0],[-1,0],[0,1],[0,-1]];
-  while(q.length){
-    const c=q.shift();
-    for(const[dx,dy]of dirs){
-      const nx=c.x+dx, ny=c.y+dy;
-      if(nx<0||ny<0||nx>=COLS||ny>=ROWS)continue;
-      const key=nx+','+ny;
-      if(seen.has(key))continue;
-      seen.add(key);
-      const first=c.first||{x:nx,y:ny};
-      if(predicate(nx,ny)) return {arrived:false,step:first};
-      q.push({x:nx,y:ny,first});
-    }
-  }
-  return {arrived:false,step:null};
+function resetField(){
+  for(const b of S.bots){b.x=b.home.x;b.y=b.home.y;b.hp=b.maxHp;b.reload=0;b.alive=true;}
+  S.shots=[];S.tick=0;S.phase='ready';S.winner=-2;
 }
+const playerBots=()=>S.bots.filter(b=>b.team===0);
 
-// ---------- 条件・行動 ----------
-function evalCond(h,op,st){
+// ---------- AI評価 ----------
+function nearestEnemy(b){let best=null,bd=1e9;for(const o of S.bots){if(o.team===b.team||!o.alive)continue;
+  const d=Math.hypot(o.x-b.x,o.y-b.y);if(d<bd){bd=d;best=o;best._d=d;}}if(best)best._d=Math.hypot(best.x-b.x,best.y-b.y);return best;}
+function evalCond(b,op){
+  const e=nearestEnemy(b);const d=e?Math.hypot(e.x-b.x,e.y-b.y):1e9;
   switch(op){
-    case 'empty':     return h.carry===null;
-    case 'hasS':      return h.carry==='S';
-    case 'hasM':      return h.carry==='M';
-    case 'hasStone':  return h.carry==='stone';
-    case 'stoneReady':return st.synth.stone===true;
+    case 'inRange':  return !!e && d<=RANGE;
+    case 'lowHP':    return b.hp < b.maxHp*LOWHP;
+    case 'enemyNear':return !!e && d<=ENEMY_NEAR;
+    case 'always':   return true;
   }
   return false;
 }
-function actionTarget(op,st){
-  switch(op){
-    case 'takeS':    return st.veins.find(v=>v.kind==='S');
-    case 'takeM':    return st.veins.find(v=>v.kind==='M');
-    case 'toSynth':  return st.synth;
-    case 'fromSynth':return st.synth;
-    case 'toAltar':  return st.altar;
+function decideAction(b){
+  let pc=b.chip.start,g=0;
+  while(g++<24){
+    const c=b.chip.cells[pc];
+    if(!c||c.kind==='empty') return 'idle';
+    if(c.kind==='act') return c.op;
+    const r=evalCond(b,c.op);
+    const n=r?c.out[0]:c.out[1];
+    if(n==null||n<0) return 'idle';
+    pc=n;
   }
-  return null;
+  return 'idle';
 }
-// 戻り: true=完了(配線先へ進む) / false=継続(このtick消費)
-function performAction(h,op,st){
-  // 前提を満たさない無効行動は即完了(空振り)させて配線を進める
-  if((op==='takeS'||op==='takeM'||op==='fromSynth') && h.carry!==null) return true;
-  if(op==='toSynth' && h.carry!=='S' && h.carry!=='M') return true;
-  if(op==='toAltar' && h.carry!=='stone') return true;
-  const tgt=actionTarget(op,st);
-  if(!tgt) return true;
-  if(h.x!==tgt.x||h.y!==tgt.y){
-    const res=bfsNextStep({x:h.x,y:h.y},(x,y)=>x===tgt.x&&y===tgt.y);
-    if(res.step){h.x=res.step.x;h.y=res.step.y;}
-    return false; // 移動中
-  }
-  // 目的地に到着 → 作業
-  switch(op){
-    case 'takeS': if(tgt.ready){tgt.ready=false;tgt.timer=0;h.carry='S';return true;} return false;
-    case 'takeM': if(tgt.ready){tgt.ready=false;tgt.timer=0;h.carry='M';return true;} return false;
-    case 'toSynth':
-      if(h.carry==='S'&&!st.synth.s){st.synth.s=true;h.carry=null;return true;}
-      if(h.carry==='M'&&!st.synth.m){st.synth.m=true;h.carry=null;return true;}
-      return false; // スロット使用中 → 待機
-    case 'fromSynth':
-      if(st.synth.stone){st.synth.stone=false;h.carry='stone';return true;}
-      return false; // まだ出来てない → 待機
-    case 'toAltar':
-      h.carry=null; st.delivered++; onDeliver(); return true;
-  }
-  return true;
+function clampPos(b){b.x=Math.max(BOT_R,Math.min(W-BOT_R,b.x));b.y=Math.max(BOT_R,Math.min(H-BOT_R,b.y));}
+function performAction(b,op){
+  const e=nearestEnemy(b);
+  if(op==='idle'||!e)return;
+  const dx=e.x-b.x,dy=e.y-b.y,d=Math.hypot(dx,dy)||1;
+  if(op==='approach'){ if(d>BOT_R*1.6){b.x+=dx/d*MOVE;b.y+=dy/d*MOVE;clampPos(b);} }
+  else if(op==='retreat'){ b.x-=dx/d*MOVE;b.y-=dy/d*MOVE;clampPos(b); }
+  else if(op==='shoot'){ if(d<=RANGE&&b.reload<=0){ e.hp-=DMG;b.reload=COOLDOWN;
+      S.shots.push({x1:b.x,y1:b.y,x2:e.x,y2:e.y,life:5,col:b.color}); } }
 }
-
-function stepHomunculus(h,st){
-  let guard=0;
-  while(guard++<8){
-    const cell=h.chip.cells[h.pc];
-    if(!cell||cell.kind==='empty') return;             // 待機
-    if(cell.kind==='cond'){
-      const r=evalCond(h,cell.op,st);
-      const nxt=r?cell.out[0]:cell.out[1];
-      if(nxt==null||nxt<0) return;                     // 行き止まり→待機
-      h.pc=nxt; continue;
-    }
-    if(cell.kind==='act'){
-      const done=performAction(h,cell.op,st);
-      if(done){ const nxt=cell.out[0]; if(nxt!=null&&nxt>=0) h.pc=nxt; }
-      return;                                          // 行動はtickを消費
-    }
+function stepSim(){
+  if(S.phase!=='fighting')return;
+  for(const b of S.bots) if(b.alive&&b.reload>0)b.reload--;
+  for(const b of S.bots){ if(b.alive){ const a=decideAction(b); performAction(b,a); } }
+  for(const b of S.bots) if(b.alive&&b.hp<=0)b.alive=false;
+  for(const s of S.shots)s.life--; S.shots=S.shots.filter(s=>s.life>0);
+  S.tick++;
+  const p=S.bots.filter(b=>b.team===0&&b.alive).length;
+  const en=S.bots.filter(b=>b.team===1&&b.alive).length;
+  if(p===0||en===0||S.tick>=MAX_TICKS){
+    S.phase='over';
+    S.winner = (en===0&&p>0)?0:((p===0&&en>0)?1:-1);
+    onBattleOver();
   }
-}
-
-function stepSim(st){
-  for(const v of st.veins){ if(!v.ready){ if(++v.timer>=SPAWN_TICKS){v.ready=true;v.timer=0;} } }
-  const sy=st.synth;
-  if(sy.s&&sy.m&&!sy.processing&&!sy.stone){sy.processing=true;sy.progress=0;}
-  if(sy.processing){ if(++sy.progress>=PROCESS_TICKS){sy.processing=false;sy.stone=true;sy.s=false;sy.m=false;} }
-  for(const h of st.agents) stepHomunculus(h,st);
-  st.tick++;
 }
 
 // ============================================================
-//  描画（盤面）
+//  描画（アリーナ）
 // ============================================================
 const cv=document.getElementById('cv'), ctx=cv.getContext('2d');
-function rr(x,y,w,h,r){ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);
-  ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath();}
-function matDot(cx,cy,mat,r){ctx.fillStyle=MAT_COL[mat];ctx.beginPath();ctx.arc(cx,cy,r,0,7);ctx.fill();
-  ctx.strokeStyle='#0007';ctx.lineWidth=1;ctx.stroke();
-  ctx.fillStyle='#1a1626';ctx.font=(r*1.1|0)+'px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';
-  ctx.fillText(MAT_LABEL[mat],cx,cy+1);ctx.textBaseline='alphabetic';}
 function draw(){
-  ctx.clearRect(0,0,cv.width,cv.height);
-  for(let y=0;y<ROWS;y++)for(let x=0;x<COLS;x++){
-    ctx.fillStyle=((x+y)%2)?'#15111e':'#191425';ctx.fillRect(x*CELL,y*CELL,CELL,CELL);
-  }
-  ctx.strokeStyle='#2a2438';ctx.lineWidth=1;
-  for(let x=0;x<=COLS;x++){ctx.beginPath();ctx.moveTo(x*CELL,0);ctx.lineTo(x*CELL,ROWS*CELL);ctx.stroke();}
-  for(let y=0;y<=ROWS;y++){ctx.beginPath();ctx.moveTo(0,y*CELL);ctx.lineTo(COLS*CELL,y*CELL);ctx.stroke();}
-  // 脈
-  for(const v of S.veins){
-    const x=v.x*CELL,y=v.y*CELL,cx=x+CELL/2;
-    ctx.fillStyle='#2c2740';rr(x+8,y+8,CELL-16,CELL-16,9);ctx.fill();
-    ctx.fillStyle=MAT_COL[v.kind];ctx.font='11px sans-serif';ctx.textAlign='center';
-    ctx.fillText((v.kind==='S'?'硫黄脈':'水銀脈'),cx,y+24);
-    if(v.ready) matDot(cx,y+CELL/2+6,v.kind,15);
-  }
-  // 合成台
-  {const sy=S.synth,x=sy.x*CELL,y=sy.y*CELL,cx=x+CELL/2,cy=y+CELL/2;
-   ctx.fillStyle='#241f33';rr(x+8,y+8,CELL-16,CELL-16,9);ctx.fill();
-   ctx.strokeStyle='#5a4f80';ctx.lineWidth=2;rr(x+8,y+8,CELL-16,CELL-16,9);ctx.stroke();
-   ctx.fillStyle='#9a8fd0';ctx.font='11px sans-serif';ctx.textAlign='center';ctx.fillText('合成台',cx,y+24);
-   // 入力スロット
-   ctx.strokeStyle='#5a4f80';ctx.lineWidth=1;
-   const sxL=cx-22,sxR=cx+22,sy0=cy+4;
-   [['S',sxL,sy.s],['M',sxR,sy.m]].forEach(([m,px,filled])=>{
-     ctx.beginPath();ctx.arc(px,sy0,12,0,7);ctx.fillStyle='#15111e';ctx.fill();ctx.stroke();
-     if(filled) matDot(px,sy0,m,11);
-   });
-   if(sy.processing){const w=(CELL-24)*(sy.progress/PROCESS_TICKS);
-     ctx.fillStyle='#3a3050';ctx.fillRect(x+12,y+CELL-16,CELL-24,5);
-     ctx.fillStyle=MAT_COL.stone;ctx.fillRect(x+12,y+CELL-16,w,5);}
-   if(sy.stone){ctx.save();ctx.shadowColor=MAT_COL.stone;ctx.shadowBlur=14;matDot(cx,cy+4,'stone',14);ctx.restore();}
-  }
-  // 祭壇
-  {const a=S.altar,x=a.x*CELL,y=a.y*CELL,cx=x+CELL/2,cy=y+CELL/2;
-   ctx.save();ctx.shadowColor='#c9a24a';ctx.shadowBlur=10;
-   ctx.fillStyle='#3a2f12';rr(x+8,y+8,CELL-16,CELL-16,9);ctx.fill();ctx.restore();
-   ctx.strokeStyle='#c9a24a';ctx.lineWidth=2;rr(x+8,y+8,CELL-16,CELL-16,9);ctx.stroke();
-   ctx.fillStyle='#c9a24a';ctx.font='11px sans-serif';ctx.textAlign='center';ctx.fillText('祭壇',cx,cy+4);}
-  // ホムンクルス
-  for(const h of S.agents){
-    const cx=h.x*CELL+CELL/2, cy=h.y*CELL+CELL/2;
+  ctx.clearRect(0,0,W,H);
+  // 背景グリッド
+  ctx.strokeStyle='#1c1828';ctx.lineWidth=1;
+  for(let x=0;x<=W;x+=40){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke();}
+  for(let y=0;y<=H;y+=40){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}
+  // 弾道
+  for(const s of S.shots){ctx.strokeStyle=s.col;ctx.globalAlpha=s.life/6;ctx.lineWidth=2;
+    ctx.beginPath();ctx.moveTo(s.x1,s.y1);ctx.lineTo(s.x2,s.y2);ctx.stroke();ctx.globalAlpha=1;}
+  // ボット
+  for(const b of S.bots){
+    if(!b.alive){ctx.strokeStyle='#3a3350';ctx.lineWidth=2;
+      ctx.beginPath();ctx.moveTo(b.x-8,b.y-8);ctx.lineTo(b.x+8,b.y+8);ctx.moveTo(b.x+8,b.y-8);ctx.lineTo(b.x-8,b.y+8);ctx.stroke();continue;}
     ctx.save();ctx.shadowColor='#000a';ctx.shadowBlur=4;
-    ctx.fillStyle=h.color;ctx.beginPath();ctx.arc(cx,cy,17,0,7);ctx.fill();ctx.restore();
-    ctx.fillStyle='#1a1626';ctx.beginPath();ctx.arc(cx-6,cy-3,2.6,0,7);ctx.arc(cx+6,cy-3,2.6,0,7);ctx.fill();
-    if(h.id===activeAgent){ctx.strokeStyle='#fff';ctx.lineWidth=2;ctx.beginPath();ctx.arc(cx,cy,19,0,7);ctx.stroke();}
-    if(h.carry) matDot(cx,cy-23,h.carry,9);
+    ctx.fillStyle=b.color;ctx.beginPath();ctx.arc(b.x,b.y,BOT_R,0,7);ctx.fill();ctx.restore();
+    ctx.fillStyle='#15111e';ctx.beginPath();ctx.arc(b.x-5,b.y-3,2.4,0,7);ctx.arc(b.x+5,b.y-3,2.4,0,7);ctx.fill();
+    // HPバー
+    const w=28,hp=Math.max(0,b.hp)/b.maxHp;
+    ctx.fillStyle='#000a';ctx.fillRect(b.x-w/2,b.y-BOT_R-9,w,4);
+    ctx.fillStyle=b.team===0?'#5bc8e0':'#e0617a';ctx.fillRect(b.x-w/2,b.y-BOT_R-9,w*hp,4);
+  }
+  // 勝敗表示
+  if(S.phase==='over'){
+    ctx.fillStyle='#000a';ctx.fillRect(0,H/2-26,W,52);
+    ctx.fillStyle= S.winner===0?'#5fd08a':(S.winner===1?'#e0617a':'#c9a24a');
+    ctx.font='bold 26px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';
+    ctx.fillText(S.winner===0?'WIN — 自軍の勝利':(S.winner===1?'LOSE — 敗北':'DRAW — 時間切れ'),W/2,H/2);
+    ctx.textBaseline='alphabetic';
   }
 }
 
 // ============================================================
 //  ループ
 // ============================================================
-let running=false, speed=1, lastT=0, acc=0, frames=0, fpsT=0, fps=0;
+let lastT=0,acc=0,frames=0,fpsT=0,fps=0;
 function loop(t){
   requestAnimationFrame(loop);
-  if(!lastT)lastT=t;
-  const dt=(t-lastT)/1000;lastT=t;
+  if(!lastT)lastT=t;const dt=(t-lastT)/1000;lastT=t;
   frames++;fpsT+=dt;if(fpsT>=0.5){fps=Math.round(frames/fpsT);frames=0;fpsT=0;}
-  if(running){acc+=dt;const iv=1/(TPS_BASE*speed);let g=0;while(acc>=iv&&g<30){acc-=iv;stepSim(S);g++;}}
+  if(running&&S.phase==='fighting'){acc+=dt;const iv=1/(TPS*speed);let g=0;while(acc>=iv&&g<40){acc-=iv;stepSim();g++;}}
   draw();
-  if(dbgOn) updateDbg();
+  $('pCount').textContent=S.bots.filter(b=>b.team===0&&b.alive).length;
+  $('eCount').textContent=S.bots.filter(b=>b.team===1&&b.alive).length;
+  if(dbgOn)updateDbg();
 }
 
 // ============================================================
-//  チップ・エディタ UI
+//  基板エディタ（タップ配置・ポート配線。行動は終端＝ポート無し）
 // ============================================================
 const $=id=>document.getElementById(id);
-function refreshHUD(){ $('delivered').textContent=S.delivered; buildLegend(); }
-function buildLegend(){
-  $('legend').innerHTML =
-    `<span>硫黄＝<b style="color:var(--mS)">硫</b></span>`+
-    `<span>水銀＝<b style="color:var(--mM)">汞</b></span>`+
-    `<span>賢者の石＝<b style="color:var(--mStone)">石</b></span>`+
-    `<span class="hint" style="margin:0">合成台で 硫+汞 → 石</span>`;
-}
-function buildTabs(){
-  const t=$('tabs');t.innerHTML='';
-  S.agents.forEach(h=>{
-    const b=document.createElement('div');
-    b.className='tab'+(h.id===activeAgent?' active':'');
-    b.textContent='ホム '+(h.id+1);
-    b.style.borderBottomColor=h.color;
-    b.onclick=()=>{activeAgent=h.id;buildTabs();buildChip();};
-    t.appendChild(b);
-  });
-}
-function sel(options,val,onCh,blank){
-  const s=document.createElement('select');
-  if(blank!==undefined){const o=document.createElement('option');o.value='-1';o.textContent=blank;if(val===-1||val==null)o.selected=true;s.appendChild(o);}
-  options.forEach(o=>{const op=document.createElement('option');op.value=o.k;op.textContent=o.l;if(String(o.k)===String(val))op.selected=true;s.appendChild(op);});
-  s.onchange=()=>onCh(s.value);
-  return s;
-}
-const CELL_NAMES=['①','②','③','④'];
-// --- 基板ジオメトリ ---
-const CW=128, CH=104;
-const CELLBOX=[{x:16,y:24},{x:156,y:24},{x:16,y:152},{x:156,y:152}];
-function cellCenter(i){const b=CELLBOX[i];return {x:b.x+CW/2,y:b.y+CH/2};}
-function portPos(i,which,cell){
-  const b=CELLBOX[i], by=b.y+CH;
-  if(cell.kind==='act') return {x:b.x+CW/2,y:by};
-  return which==='a' ? {x:b.x+CW*0.30,y:by} : {x:b.x+CW*0.70,y:by};
-}
+const CELL_NAMES=['①','②','③','④','⑤','⑥','⑦','⑧','⑨'];
+const CW=96,CH=86,XS=[10,112,214],YS=[12,114,216];
+function box(i){return {x:XS[i%3],y:YS[(i/3|0)]};}
+function center(i){const b=box(i);return {x:b.x+CW/2,y:b.y+CH/2};}
+function portPos(i,which){const b=box(i),by=b.y+CH;return which==='a'?{x:b.x+CW*0.30,y:by}:{x:b.x+CW*0.70,y:by};}
 function opLabel(cell){
   if(cell.kind==='act') return (ACT_OPS.find(o=>o.k===cell.op)||{l:cell.op}).l;
-  if(cell.kind==='cond') return (COND_OPS.find(o=>o.k===cell.op)||{l:cell.op}).l;
+  if(cell.kind==='cond')return (COND_OPS.find(o=>o.k===cell.op)||{l:cell.op}).l;
   return '空';
 }
-function resetPCs(){ for(const h of S.agents) h.pc=h.chip.start; }
-
-let selectedCell=null, wiringFrom=null;
-
-function buildChip(){
-  selectedCell=null; wiringFrom=null;
-  $('chip').onclick=onChipClick;
-  drawChip(); buildInspector();
-}
+function curChip(){return playerBots()[activeAgent].chip;}
+function buildChip(){selectedCell=null;wiringFrom=null;$('chip').onclick=onChipClick;drawChip();buildInspector();}
 function wireArrow(a,b,col){
   const dx=b.x-a.x,dy=b.y-a.y,len=Math.hypot(dx,dy)||1,ux=dx/len,uy=dy/len;
-  const ex=b.x-ux*16, ey=b.y-uy*16, ah=7, px=-uy,py=ux;
+  const ex=b.x-ux*15,ey=b.y-uy*15,ah=7,px=-uy,py=ux;
   return `<line x1="${a.x}" y1="${a.y}" x2="${ex}" y2="${ey}" stroke="${col}" stroke-width="2"/>`+
     `<polygon points="${ex},${ey} ${ex-ux*ah+px*ah*0.6},${ey-uy*ah+py*ah*0.6} ${ex-ux*ah-px*ah*0.6},${ey-uy*ah-py*ah*0.6}" fill="${col}"/>`;
 }
-function portCircle(i,which,cell,col,glyph){
-  const p=portPos(i,which,cell), hot=wiringFrom&&wiringFrom.cell===i&&wiringFrom.which===which;
-  return `<circle data-port="${i}" data-which="${which}" cx="${p.x}" cy="${p.y}" r="${hot?12:10}" fill="${hot?col:'#15111e'}" stroke="${col}" stroke-width="2"/>`+
-    `<text x="${p.x}" y="${p.y+4}" font-size="11" text-anchor="middle" fill="${hot?'#15111e':col}" pointer-events="none">${glyph}</text>`;
+function portCircle(i,which,col,glyph){
+  const p=portPos(i,which),hot=wiringFrom&&wiringFrom.cell===i&&wiringFrom.which===which;
+  return `<circle data-port="${i}" data-which="${which}" cx="${p.x}" cy="${p.y}" r="${hot?11:9}" fill="${hot?col:'#15111e'}" stroke="${col}" stroke-width="2"/>`+
+    `<text x="${p.x}" y="${p.y+4}" font-size="10" text-anchor="middle" fill="${hot?'#15111e':col}" pointer-events="none">${glyph}</text>`;
 }
 function drawChip(){
-  const h=S.agents[activeAgent], svg=$('chip'); let s='';
-  // 配線
-  h.chip.cells.forEach((cell,i)=>{
-    if(cell.kind==='act' && cell.out[0]>=0) s+=wireArrow(portPos(i,'a',cell),cellCenter(cell.out[0]),'#8a83a8');
-    if(cell.kind==='cond'){
-      if(cell.out[0]>=0) s+=wireArrow(portPos(i,'a',cell),cellCenter(cell.out[0]),'#5fd08a');
-      if(cell.out[1]>=0) s+=wireArrow(portPos(i,'b',cell),cellCenter(cell.out[1]),'#e0617a');
-    }
-  });
-  // セル
-  h.chip.cells.forEach((cell,i)=>{
-    const b=CELLBOX[i], isStart=h.chip.start===i, isSel=selectedCell===i;
+  const chip=curChip(),svg=$('chip');let s='';
+  chip.cells.forEach((cell,i)=>{ if(cell.kind==='cond'){
+    if(cell.out[0]>=0)s+=wireArrow(portPos(i,'a'),center(cell.out[0]),'#5fd08a');
+    if(cell.out[1]>=0)s+=wireArrow(portPos(i,'b'),center(cell.out[1]),'#e0617a');
+  }});
+  chip.cells.forEach((cell,i)=>{
+    const b=box(i),isStart=chip.start===i,isSel=selectedCell===i;
     const fill=cell.kind==='empty'?'#221d30':(cell.kind==='cond'?'#2a2342':'#2f2a1c');
-    s+=`<rect data-cell="${i}" x="${b.x}" y="${b.y}" width="${CW}" height="${CH}" rx="11" fill="${fill}" stroke="${isStart?'#c9a24a':(isSel?'#7a5cc4':'#3a3350')}" stroke-width="${isStart||isSel?2.5:1}"/>`;
-    s+=`<text x="${b.x+CW/2}" y="${b.y+22}" font-size="9" text-anchor="middle" fill="#a99fc4" pointer-events="none">セル${CELL_NAMES[i]}</text>`;
-    s+=`<text x="${b.x+CW/2}" y="${b.y+CH/2+10}" font-size="12" text-anchor="middle" fill="#e9e4f5" pointer-events="none">${cell.kind==='empty'?'空':opLabel(cell)}</text>`;
-    // 開始バッジ
-    s+=`<circle data-start="${i}" cx="${b.x+15}" cy="${b.y+15}" r="10" fill="${isStart?'#c9a24a':'#15111e'}" stroke="#c9a24a" stroke-width="1.5"/>`;
-    s+=`<text x="${b.x+15}" y="${b.y+19}" font-size="10" text-anchor="middle" fill="${isStart?'#231a06':'#c9a24a'}" pointer-events="none">S</text>`;
-    // ポート
-    if(cell.kind==='act') s+=portCircle(i,'a',cell,'#8a83a8','▶');
-    else if(cell.kind==='cond'){ s+=portCircle(i,'a',cell,'#5fd08a','○'); s+=portCircle(i,'b',cell,'#e0617a','✕'); }
+    s+=`<rect data-cell="${i}" x="${b.x}" y="${b.y}" width="${CW}" height="${CH}" rx="10" fill="${fill}" stroke="${isStart?'#c9a24a':(isSel?'#7a5cc4':'#3a3350')}" stroke-width="${isStart||isSel?2.5:1}"/>`;
+    s+=`<text x="${b.x+CW/2}" y="${b.y+18}" font-size="9" text-anchor="middle" fill="#a99fc4" pointer-events="none">${CELL_NAMES[i]}</text>`;
+    s+=`<text x="${b.x+CW/2}" y="${b.y+CH/2+10}" font-size="11" text-anchor="middle" fill="#e9e4f5" pointer-events="none">${cell.kind==='empty'?'空':opLabel(cell)}</text>`;
+    s+=`<circle data-start="${i}" cx="${b.x+14}" cy="${b.y+14}" r="9" fill="${isStart?'#c9a24a':'#15111e'}" stroke="#c9a24a" stroke-width="1.5"/>`;
+    s+=`<text x="${b.x+14}" y="${b.y+18}" font-size="9" text-anchor="middle" fill="${isStart?'#231a06':'#c9a24a'}" pointer-events="none">S</text>`;
+    if(cell.kind==='cond'){s+=portCircle(i,'a','#5fd08a','○');s+=portCircle(i,'b','#e0617a','✕');}
   });
-  if(wiringFrom) s+=`<text x="150" y="14" font-size="11" text-anchor="middle" fill="#c9a24a">▶ 繋ぎ先のセルをタップ（同ポート再タップで取消）</text>`;
+  if(wiringFrom)s+=`<text x="160" y="9" font-size="10" text-anchor="middle" fill="#c9a24a">繋ぎ先のセルをタップ</text>`;
   svg.innerHTML=s;
 }
 function onChipClick(e){
-  const h=S.agents[activeAgent];
+  const chip=curChip();
   const port=e.target.closest&&e.target.closest('[data-port]');
-  if(port){ const i=+port.dataset.port, w=port.dataset.which;
-    wiringFrom=(wiringFrom&&wiringFrom.cell===i&&wiringFrom.which===w)?null:{cell:i,which:w};
-    drawChip(); return; }
+  if(port){const i=+port.dataset.port,w=port.dataset.which;
+    wiringFrom=(wiringFrom&&wiringFrom.cell===i&&wiringFrom.which===w)?null:{cell:i,which:w};drawChip();return;}
   const start=e.target.closest&&e.target.closest('[data-start]');
-  if(start){ h.chip.start=+start.dataset.start; resetPCs(); wiringFrom=null; drawChip(); buildInspector(); return; }
+  if(start){chip.start=+start.dataset.start;wiringFrom=null;drawChip();buildInspector();return;}
   const cellEl=e.target.closest&&e.target.closest('[data-cell]');
-  if(cellEl){ const i=+cellEl.dataset.cell;
-    if(wiringFrom){ const c=h.chip.cells[wiringFrom.cell];
-      if(c.kind==='act') c.out[0]=i;
-      else if(c.kind==='cond') c.out[wiringFrom.which==='a'?0:1]=i;
-      wiringFrom=null; resetPCs(); drawChip(); return; }
-    selectedCell=i; drawChip(); buildInspector(); return; }
+  if(cellEl){const i=+cellEl.dataset.cell;
+    if(wiringFrom){const c=chip.cells[wiringFrom.cell];
+      if(c.kind==='cond')c.out[wiringFrom.which==='a'?0:1]=i;
+      wiringFrom=null;drawChip();return;}
+    selectedCell=i;drawChip();buildInspector();return;}
 }
 function buildInspector(){
-  const h=S.agents[activeAgent], box=$('inspector');
-  if(selectedCell==null){ box.innerHTML='<div class="hint" style="margin-top:0">セルをタップして中身を選ぶ</div>'; return; }
-  const i=selectedCell, cell=h.chip.cells[i];
+  const chip=curChip(),boxEl=$('inspector');
+  if(selectedCell==null){boxEl.innerHTML='<div class="hint" style="margin-top:0">セルをタップして中身を選ぶ</div>';return;}
+  const i=selectedCell,cell=chip.cells[i];
   let html=`<div class="insp"><div class="insprow"><b>セル${CELL_NAMES[i]}</b>`;
-  html+=`<button class="ib ${h.chip.start===i?'on':''}" data-ins="start">${h.chip.start===i?'開始セル':'開始にする'}</button></div>`;
+  html+=`<button class="ib ${chip.start===i?'on':''}" data-ins="start">${chip.start===i?'開始セル':'開始にする'}</button></div>`;
   html+=`<div class="insprow">`;
   [['empty','空'],['act','行動'],['cond','条件']].forEach(([k,l])=>{
-    html+=`<button class="ib ${cell.kind===k?'on':''}" data-ins="kind" data-k="${k}">${l}</button>`;
-  });
+    html+=`<button class="ib ${cell.kind===k?'on':''}" data-ins="kind" data-k="${k}">${l}</button>`;});
   html+=`</div>`;
   if(cell.kind==='act'||cell.kind==='cond'){
     const ops=cell.kind==='act'?ACT_OPS:COND_OPS;
     html+=`<select id="opSel">`+ops.map(o=>`<option value="${o.k}" ${o.k===cell.op?'selected':''}>${o.l}</option>`).join('')+`</select>`;
+    if(cell.kind==='cond')html+=`<div class="hint" style="margin-top:6px">下の<span style="color:var(--good)">○</span>=成立 / <span style="color:var(--bad)">✕</span>=不成立 の繋ぎ先を配線</div>`;
+    else html+=`<div class="hint" style="margin-top:6px">行動は終端。ここに到達したら実行される</div>`;
   }
   html+=`</div>`;
-  box.innerHTML=html;
-  box.querySelectorAll('[data-ins]').forEach(btn=>{
+  boxEl.innerHTML=html;
+  boxEl.querySelectorAll('[data-ins]').forEach(btn=>{
     btn.onclick=()=>{
-      if(btn.dataset.ins==='start'){ h.chip.start=i; resetPCs(); }
-      else if(btn.dataset.ins==='kind'){
-        const k=btn.dataset.k; cell.kind=k;
-        if(k==='act'){cell.op='takeS';cell.out=[0,-1];}
-        else if(k==='cond'){cell.op='empty';cell.out=[0,1];}
-        else{cell.op='';cell.out=[-1,-1];}
-        resetPCs();
-      }
-      drawChip(); buildInspector();
-    };
+      if(btn.dataset.ins==='start')chip.start=i;
+      else if(btn.dataset.ins==='kind'){const k=btn.dataset.k;cell.kind=k;
+        if(k==='act'){cell.op='approach';cell.out=[-1,-1];}
+        else if(k==='cond'){cell.op='inRange';cell.out=[-1,-1];}
+        else{cell.op='';cell.out=[-1,-1];}}
+      drawChip();buildInspector();};
   });
-  const opSel=box.querySelector('#opSel');
-  if(opSel) opSel.onchange=()=>{cell.op=opSel.value;drawChip();};
+  const opSel=boxEl.querySelector('#opSel');
+  if(opSel)opSel.onchange=()=>{cell.op=opSel.value;drawChip();};
+}
+function buildTabs(){
+  const t=$('tabs');t.innerHTML='';
+  playerBots().forEach((b,idx)=>{
+    const el=document.createElement('div');el.className='tab'+(idx===activeAgent?' active':'');
+    el.textContent='自軍 '+(idx+1);el.style.borderBottomColor=b.color;
+    el.onclick=()=>{activeAgent=idx;buildTabs();buildChip();};
+    t.appendChild(el);
+  });
 }
 
-$('addHomu').onclick=()=>{
-  if(S.agents.length>=6)return;
-  const id=S.agents.length;
-  S.agents.push(mkAgent(id,2,0,chip([emptyCell(),emptyCell(),emptyCell(),emptyCell()],0)));
-  activeAgent=id;buildTabs();buildChip();
-};
-
 // ============================================================
-//  コントロール / 納品
+//  コントロール
 // ============================================================
 let toastT=null;
-function showToast(m){const el=$('toast');el.textContent=m;el.style.opacity='1';clearTimeout(toastT);toastT=setTimeout(()=>el.style.opacity='0',1600);}
-function onDeliver(){ bell(); refreshHUD();
-  if(S.delivered===GOAL) showToast('目標達成！賢者の石 '+GOAL+'個 — ラインを増強してみよう');
-  else showToast('賢者の石を納品！');
+function showToast(m){const el=$('toast');el.textContent=m;el.style.opacity='1';clearTimeout(toastT);toastT=setTimeout(()=>el.style.opacity='0',2200);}
+function onBattleOver(){running=false;$('play').textContent='▶ もう一戦';$('play').classList.remove('on');
+  $('phaseTxt').textContent= S.winner===0?'勝利':(S.winner===1?'敗北':'引分');
+  if(S.winner===0){bell();showToast('勝利！AIをさらに磨いて連勝を狙おう');}else if(S.winner===1){showToast('敗北… AIを直して再戦だ');}else showToast('時間切れ・引き分け');
 }
-$('play').onclick=()=>{running=!running;$('play').textContent=running?'⏸ 停止':'▶ 再生';$('play').classList.toggle('on',running);ensureAudio();};
-$('step').onclick=()=>{stepSim(S);draw();refreshHUD();};
-$('reset').onclick=()=>{doReset();};
+function startBattle(){resetField();S.phase='fighting';running=true;$('play').textContent='⏸ 一時停止';$('play').classList.add('on');$('phaseTxt').textContent='戦闘中';ensureAudio();}
+$('play').onclick=()=>{
+  if(S.phase==='ready'||S.phase==='over'){startBattle();return;}
+  running=!running;$('play').textContent=running?'⏸ 一時停止':'▶ 再開';$('play').classList.toggle('on',running);
+};
+$('reset').onclick=()=>{running=false;resetField();$('play').textContent='▶ 戦闘開始';$('play').classList.remove('on');$('phaseTxt').textContent='編集中';draw();};
 $('spd').onclick=()=>{speed=speed===1?2:speed===2?4:1;$('spd').textContent='速度 '+speed+'x';};
 let dbgOn=false;
 $('dbgBtn').onclick=()=>{dbgOn=!dbgOn;$('dbg').style.display=dbgOn?'block':'none';$('dbgBtn').classList.toggle('on',dbgOn);};
 function updateDbg(){
-  const a=S.agents.map(h=>`H${h.id+1}(${h.x},${h.y}) ${h.carry||'-'} pc:${h.pc}`).join('\n');
-  $('dbg').textContent=`fps ${fps} tick ${S.tick} spd ${speed}x\n納品 ${S.delivered} 合成[S:${S.synth.s?1:0} M:${S.synth.m?1:0} 石:${S.synth.stone?1:0}]\n`+a;
-}
-function doReset(){
-  running=false;$('play').textContent='▶ 再生';$('play').classList.remove('on');
-  activeAgent=0;S=freshState();buildTabs();buildChip();refreshHUD();draw();
+  const a=S.bots.map(b=>`B${b.id}${b.team?'敵':'自'} hp${Math.max(0,b.hp|0)} ${b.alive?decideAction(b):'×'}`).join('\n');
+  $('dbg').textContent=`fps ${fps} tick ${S.tick} ${S.phase}\n`+a;
 }
 
 // ============================================================
 //  Web Audio
 // ============================================================
 let actx=null,masterGain=null,muted=false;
-function ensureAudio(){
-  if(actx)return;
-  try{
-    actx=new (window.AudioContext||window.webkitAudioContext)();
-    masterGain=actx.createGain();masterGain.gain.value=muted?0:0.15;masterGain.connect(actx.destination);
-    [55,82.4,110].forEach((f,i)=>{
-      const o=actx.createOscillator();o.type=i===2?'triangle':'sine';o.frequency.value=f;
-      const g=actx.createGain();g.gain.value=0.05;
-      const lfo=actx.createOscillator();lfo.frequency.value=0.05+i*0.03;
-      const lg=actx.createGain();lg.gain.value=0.04;lfo.connect(lg);lg.connect(g.gain);
-      o.connect(g);g.connect(masterGain);o.start();lfo.start();
-    });
-  }catch(e){}
-}
-function tone(f,d,v){if(!actx||muted)return;const o=actx.createOscillator();o.type='sine';o.frequency.value=f;
+function ensureAudio(){if(actx)return;try{
+  actx=new (window.AudioContext||window.webkitAudioContext)();
+  masterGain=actx.createGain();masterGain.gain.value=muted?0:0.14;masterGain.connect(actx.destination);
+  [55,82.4].forEach((f,i)=>{const o=actx.createOscillator();o.type='sine';o.frequency.value=f;
+    const g=actx.createGain();g.gain.value=0.05;const lfo=actx.createOscillator();lfo.frequency.value=0.06+i*0.03;
+    const lg=actx.createGain();lg.gain.value=0.04;lfo.connect(lg);lg.connect(g.gain);o.connect(g);g.connect(masterGain);o.start();lfo.start();});
+}catch(e){}}
+function tone(f,d,v,type){if(!actx||muted)return;const o=actx.createOscillator();o.type=type||'sine';o.frequency.value=f;
   const g=actx.createGain();g.gain.value=0;o.connect(g);g.connect(masterGain);const n=actx.currentTime;
-  g.gain.linearRampToValueAtTime(v,n+0.04);g.gain.exponentialRampToValueAtTime(0.0001,n+d);o.start(n);o.stop(n+d+0.05);}
-function bell(){[523.3,659.3,784].forEach((f,i)=>setTimeout(()=>tone(f,0.8,0.07),i*55));}
-$('mute').onclick=()=>{muted=!muted;$('mute').textContent=muted?'♪ 音 OFF':'♪ 音 ON';$('mute').classList.toggle('on',!muted);if(masterGain)masterGain.gain.value=muted?0:0.15;};
+  g.gain.linearRampToValueAtTime(v,n+0.02);g.gain.exponentialRampToValueAtTime(0.0001,n+d);o.start(n);o.stop(n+d+0.05);}
+function bell(){[523,659,784].forEach((f,i)=>setTimeout(()=>tone(f,0.7,0.07),i*55));}
+$('mute').onclick=()=>{muted=!muted;$('mute').textContent=muted?'♪ 音 OFF':'♪ 音 ON';$('mute').classList.toggle('on',!muted);if(masterGain)masterGain.gain.value=muted?0:0.14;};
 document.addEventListener('visibilitychange',()=>{if(actx){document.hidden?actx.suspend():actx.resume();}});
 window.addEventListener('pagehide',()=>{if(actx)actx.suspend();});
 
@@ -573,11 +417,12 @@ window.addEventListener('pagehide',()=>{if(actx)actx.suspend();});
 //  起動
 // ============================================================
 $('startBtn').onclick=()=>{$('intro').style.display='none';ensureAudio();$('mute').classList.add('on');};
-function boot(){S=freshState();buildTabs();buildChip();refreshHUD();draw();requestAnimationFrame(loop);}
+function boot(){S=freshState();buildTabs();buildChip();draw();requestAnimationFrame(loop);}
 boot();
 
 if(typeof module!=='undefined'&&module.exports){
-  module.exports={freshState,stepSim,feederChip,delivererChip};
+  module.exports={freshState,stepSim,decideAction,defaultPlayerChip,defaultEnemyChip,
+    setState:s=>{S=s;},getState:()=>S};
 }
 </script>
 </body>
