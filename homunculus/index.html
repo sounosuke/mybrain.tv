@@ -116,7 +116,7 @@
   <div class="box">
     <h2>HOMUNCULUS</h2>
     <p>君は錬金術師。盤面は直接動かさない。<span class="k">ホムンクルス</span>に「<span class="k">もし〜なら〜する</span>」のルール（ガンビット）を書き、自律で工房を回させる。</p>
-    <p>最初は<span class="k">鉛(黒)</span>を脈で拾って<span class="k">祭壇</span>へ納品するだけ。納品して実績を積むと、<span class="k">坩堝</span>・<span class="k">精製</span>・新しい条件・ルール枠が段階的に解禁され、白→黄→<span class="k">赤(賢者の石)</span>へと作れる物が増えていく。</p>
+    <p>最初は<span class="k">鉛(黒)</span>を脈で拾って<span class="k">祭壇</span>へ納品するだけ。納品して実績を積むと、<span class="k">坩堝</span>・<span class="k">精製</span>・新しい条件が段階的に解禁され、白→黄→<span class="k">赤(賢者の石)</span>へと作れる物が増えていく。ルール枠はショップで拡張。</p>
     <p>坩堝は精製が終わると完成品を<span class="k">隣のマスへ自動排出</span>する。それを拾って次へ運ぶ。</p>
     <p class="hint">狭い盤面に、どれだけ効率を詰め込めるか。まず▶再生で観察を。</p>
     <button class="primary" id="startBtn" style="width:100%;margin-top:8px">工房を開く</button>
@@ -177,7 +177,7 @@ const TIERS=[
   {targetStage:3, quota:8,  newActs:[], newConds:['hold3','doneEx','freeEx'],
    slots:4, crucibles:2, shop:true,
    preset:null,
-   msg:'最適化条件＋4枠解禁！賢者の石(赤)を納品'},
+   msg:'最適化条件を解禁！賢者の石(赤)を納品'},
   {targetStage:3, quota:24, newActs:[], newConds:[],
    slots:5, crucibles:3, shop:true,
    preset:null,
@@ -214,7 +214,7 @@ function freshState(){
     agents:[mkAgent(0,1,2,AGENT_COLORS[0],[])],
     tick:0, tier:-1, target:0, quota:0, prog:0,
     delivered:0, spendable:0,
-    acts:[], conds:[], slotLimit:0, moveEvery:2, shopOn:false,
+    acts:[], conds:[], slotLimit:3, moveEvery:2, shopOn:false,
   };
   applyTier(st,0);
   return st;
@@ -233,7 +233,6 @@ function applyTier(st,i){
   st.tier=i;
   for(const a of t.newActs) if(!st.acts.includes(a)) st.acts.push(a);
   for(const c of t.newConds) if(!st.conds.includes(c)) st.conds.push(c);
-  st.slotLimit=Math.max(st.slotLimit,t.slots);
   st.target=t.targetStage; st.quota=t.quota; st.prog=0;
   ensureCrucibles(st,t.crucibles);
   st.shopOn=t.shop;
