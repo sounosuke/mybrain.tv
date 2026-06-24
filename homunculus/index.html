@@ -1,0 +1,604 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>HOMUNCULUS — 錬金ガンビット工場 (仮)</title>
+<style>
+  :root{
+    --bg:#15131c; --panel:#1f1b2b; --panel2:#272036; --ink:#e9e4f5; --sub:#a99fc4;
+    --line:#3a3350; --accent:#c9a24a; --accent2:#7a5cc4; --good:#5fd08a; --bad:#e0617a;
+    --s0:#4a4658; --s1:#dcdce6; --s2:#e3c34a; --s3:#e0503a;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Noto Sans JP",sans-serif;
+    overscroll-behavior:none;touch-action:manipulation}
+  #app{max-width:980px;margin:0 auto;padding:env(safe-area-inset-top) 10px 24px}
+  h1{font-size:15px;letter-spacing:.18em;margin:10px 2px 2px;color:var(--accent);font-weight:700}
+  .tag{font-size:11px;color:var(--sub);margin:0 2px 8px}
+  .wrap{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-start}
+  .left{flex:1 1 360px;min-width:300px}
+  .right{flex:1 1 300px;min-width:280px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px;margin-bottom:10px}
+  canvas{width:100%;height:auto;display:block;border-radius:10px;background:#100e17;image-rendering:auto}
+  .goal{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:13px;margin-bottom:8px;flex-wrap:wrap}
+  .goal b{color:var(--accent)}
+  .pill{background:var(--panel2);border:1px solid var(--line);border-radius:999px;padding:3px 10px;font-size:12px}
+  .row{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+  button{font-family:inherit;font-size:13px;color:var(--ink);background:var(--panel2);
+    border:1px solid var(--line);border-radius:9px;padding:8px 12px;cursor:pointer}
+  button:hover{border-color:var(--accent2)}
+  button.primary{background:var(--accent2);border-color:var(--accent2);font-weight:700}
+  button.on{background:var(--accent);border-color:var(--accent);color:#231a06;font-weight:700}
+  button:disabled{opacity:.4;cursor:not-allowed}
+  .sect{font-size:11px;letter-spacing:.12em;color:var(--sub);margin:2px 2px 8px;text-transform:uppercase}
+  .tabs{display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap}
+  .tab{padding:6px 12px;border-radius:8px 8px 0 0;font-size:12px;border:1px solid var(--line);background:var(--panel2);cursor:pointer}
+  .tab.active{background:var(--accent2);border-color:var(--accent2);font-weight:700}
+  .rule{display:flex;gap:5px;align-items:center;background:var(--panel2);border:1px solid var(--line);
+    border-radius:9px;padding:6px;margin-bottom:6px}
+  .rule .ord{display:flex;flex-direction:column;gap:1px}
+  .rule .ord button{padding:1px 6px;font-size:10px;line-height:1.1}
+  .rule select{flex:1;min-width:0;font-family:inherit;font-size:12px;color:var(--ink);
+    background:#171323;border:1px solid var(--line);border-radius:7px;padding:7px 5px}
+  .rule .arrow{color:var(--accent);font-weight:700}
+  .rule .del{padding:6px 9px;color:var(--bad)}
+  .rule .num{color:var(--sub);font-size:11px;width:14px;text-align:center}
+  .shop button{display:flex;justify-content:space-between;align-items:center;width:100%;margin-bottom:6px;text-align:left}
+  .shop .cost{color:var(--accent);font-size:12px}
+  .legend{display:flex;gap:10px;flex-wrap:wrap;font-size:11px;color:var(--sub);margin-top:6px}
+  .chip{display:inline-flex;align-items:center;gap:4px}
+  .dot{width:11px;height:11px;border-radius:3px;display:inline-block;border:1px solid #0004}
+  #dbg{position:fixed;left:6px;bottom:6px;font:11px/1.4 monospace;color:#7fe;background:#000a;
+    padding:4px 7px;border-radius:6px;pointer-events:none;white-space:pre;display:none;z-index:50}
+  .modal{position:fixed;inset:0;background:#0b0910ee;display:flex;align-items:center;justify-content:center;z-index:100;padding:18px}
+  .modal .box{background:var(--panel);border:1px solid var(--line);border-radius:14px;max-width:430px;padding:20px}
+  .modal h2{margin:0 0 6px;color:var(--accent);font-size:17px;letter-spacing:.08em}
+  .modal p{font-size:13px;line-height:1.7;color:var(--ink);margin:8px 0}
+  .modal .k{color:var(--accent);font-weight:700}
+  .hint{font-size:12px;color:var(--sub);line-height:1.6;margin-top:4px}
+  .toast{position:fixed;left:50%;top:14px;transform:translateX(-50%);background:var(--good);color:#06210f;
+    padding:7px 16px;border-radius:999px;font-size:13px;font-weight:700;z-index:80;opacity:0;transition:opacity .25s;pointer-events:none}
+</style>
+</head>
+<body>
+<div id="app">
+  <h1>HOMUNCULUS</h1>
+  <div class="tag">錬金ガンビット工場 — プロトタイプ v0.1（タイトル仮）</div>
+  <div class="wrap">
+    <div class="left">
+      <div class="card">
+        <div class="goal">
+          <div>目標：<b id="goalText">賢者の石(赤)を 3 個 納品</b></div>
+          <div class="row">
+            <span class="pill">納品 <b id="delivered">0</b></span>
+            <span class="pill">業績 <b id="points">0</b></span>
+          </div>
+        </div>
+        <canvas id="cv" width="448" height="384"></canvas>
+        <div class="legend">
+          <span class="chip"><span class="dot" style="background:var(--s0)"></span>黒(鉛)</span>
+          <span class="chip"><span class="dot" style="background:var(--s1)"></span>白</span>
+          <span class="chip"><span class="dot" style="background:var(--s2)"></span>黄</span>
+          <span class="chip"><span class="dot" style="background:var(--s3)"></span>赤(賢者の石)</span>
+          <span class="chip">脈=採掘 / 坩堝=精製(段+1) / 祭壇=納品</span>
+        </div>
+      </div>
+      <div class="card">
+        <div class="row" style="justify-content:space-between">
+          <div class="row">
+            <button id="play" class="primary">▶ 再生</button>
+            <button id="step">⏭ 1tick</button>
+            <button id="reset">⟲ リセット</button>
+          </div>
+          <div class="row">
+            <button id="spd">速度 1x</button>
+            <button id="mute">♪ 音 ON</button>
+            <button id="dbgBtn">dbg</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="right">
+      <div class="card">
+        <div class="sect">ガンビット（上から評価・最初に成立した行動を実行）</div>
+        <div class="tabs" id="tabs"></div>
+        <div id="rules"></div>
+        <button id="addRule" style="width:100%;margin-top:2px">＋ ルール追加 <span id="slotInfo" class="hint"></span></button>
+        <div class="hint">行動は条件が満たせない時は自動でスキップ（次のルールへ）。順序が戦略です。</div>
+      </div>
+      <div class="card shop">
+        <div class="sect">錬金強化ショップ（業績で購入）</div>
+        <div id="shop"></div>
+      </div>
+    </div>
+  </div>
+</div>
+<div id="dbg"></div>
+<div id="toast" class="toast"></div>
+
+<div class="modal" id="intro">
+  <div class="box">
+    <h2>HOMUNCULUS</h2>
+    <p>君は錬金術師。盤面は直接動かさない。<span class="k">ホムンクルス</span>に「<span class="k">もし〜なら〜する</span>」のルール（ガンビット）を書き、自律で工房を回させる。</p>
+    <p><span class="k">脈</span>で黒い鉛を採り、<span class="k">坩堝</span>に入れる度に 黒→白→黄→赤 と精製が一段進む。<span class="k">赤(賢者の石)</span>を<span class="k">祭壇</span>へ運べば納品。</p>
+    <p>初期ルールは既に動く形で入れてある。まず<span class="k">▶再生</span>を押して観察し、詰まりを直し、<span class="k">業績</span>でホムンクルスや坩堝を増やそう。</p>
+    <p class="hint">狭い盤面に、どれだけ効率を詰め込めるか。</p>
+    <button class="primary" id="startBtn" style="width:100%;margin-top:8px">工房を開く</button>
+  </div>
+</div>
+
+<script>
+"use strict";
+/* ============================================================
+   HOMUNCULUS — 錬金ガンビット工場 プロト v0.1
+   単一ファイル / Canvas + Web Audio
+   ============================================================ */
+
+// ---------- 定数 ----------
+const COLS=7, ROWS=6, CELL=64;
+const TPS_BASE=8;            // 基本tick/秒
+const PROCESS_TICKS=16;      // 坩堝の処理時間
+const SPAWN_TICKS=12;        // 脈の再生成時間
+const STAGE_COLS=['#4a4658','#dcdce6','#e3c34a','#e0503a'];
+const STAGE_NAME=['黒','白','黄','赤'];
+
+// 条件・行動の定義（ラベル）
+const CONDS=[
+  {k:'empty',    label:'手ぶらのとき'},
+  {k:'hold0',    label:'黒を持っているとき'},
+  {k:'hold1',    label:'白を持っているとき'},
+  {k:'hold2',    label:'黄を持っているとき'},
+  {k:'hold3',    label:'赤を持っているとき'},
+  {k:'holdAny',  label:'何か持っているとき'},
+  {k:'doneEx',   label:'完成した坩堝があるとき'},
+  {k:'freeEx',   label:'空いた坩堝があるとき'},
+  {k:'always',   label:'常に'},
+];
+const ACTS=[
+  {k:'pick',    label:'素材を拾いに行く'},
+  {k:'refine',  label:'坩堝で精製する'},
+  {k:'collect', label:'坩堝から回収する'},
+  {k:'deliver', label:'祭壇へ納品する'},
+  {k:'wait',    label:'待機する'},
+];
+
+// ---------- ステージ目標 ----------
+const STAGES_GOAL=[3,6,10];  // 段階クリアに必要な累計納品
+let goalIndex=0;
+
+// ---------- 状態 ----------
+let S=null;          // シミュ状態
+let slotLimit=4;     // 1体あたりルール上限
+let activeAgent=0;
+
+function freshState(){
+  const grid=[];
+  for(let y=0;y<ROWS;y++){const r=[];for(let x=0;x<COLS;x++)r.push('floor');grid.push(r);}
+  const veins=[{x:0,y:1},{x:0,y:4}].map(v=>({x:v.x,y:v.y,ready:true,timer:0}));
+  const crucibles=[{x:3,y:1},{x:3,y:4}].map(c=>({x:c.x,y:c.y,content:null,processing:false,progress:0,done:false,outStage:null}));
+  const altar={x:6,y:2};
+  veins.forEach(v=>grid[v.y][v.x]='vein');
+  crucibles.forEach(c=>grid[c.y][c.x]='crucible');
+  grid[altar.y][altar.x]='altar';
+  const presets=[
+    {cond:'hold3',  action:'deliver'},
+    {cond:'holdAny',action:'refine'},
+    {cond:'doneEx', action:'collect'},
+    {cond:'freeEx', action:'pick'},
+  ];
+  const agents=[mkAgent(0,1,2,'#7ad0e0',presets.map(r=>({...r})))];
+  return {grid,veins,crucibles,altar,agents,tick:0,delivered:0,points:0,spendable:0,
+          crucibleSpots:[{x:3,y:2},{x:3,y:3}], agentSpots:[{x:1,y:3},{x:1,y:0},{x:1,y:5}],
+          moveEvery:2};
+}
+function mkAgent(id,x,y,color,rules){
+  return {id,x,y,color,holding:null,rules,moveTimer:0,lastAction:'—'};
+}
+
+// ---------- 経路探索 (BFS, 4近傍, 全マス歩行可) ----------
+function bfsNextStep(start,predicate){
+  // 戻り値: {arrived:bool, step:{x,y}|null}
+  if(predicate(start.x,start.y)) return {arrived:true,step:null};
+  const seen=new Set([start.x+','+start.y]);
+  const q=[{x:start.x,y:start.y,first:null}];
+  const dirs=[[1,0],[-1,0],[0,1],[0,-1]];
+  while(q.length){
+    const c=q.shift();
+    for(const[dx,dy]of dirs){
+      const nx=c.x+dx, ny=c.y+dy;
+      if(nx<0||ny<0||nx>=COLS||ny>=ROWS)continue;
+      const key=nx+','+ny;
+      if(seen.has(key))continue;
+      seen.add(key);
+      const first=c.first||{x:nx,y:ny};
+      if(predicate(nx,ny)) return {arrived:false,step:first};
+      q.push({x:nx,y:ny,first});
+    }
+  }
+  return {arrived:false,step:null}; // 到達不能
+}
+
+// ---------- 行動の実行可能判定 ----------
+function existsVeinReady(st){return st.veins.some(v=>v.ready);}
+function existsFreeCrucible(st){return st.crucibles.some(c=>c.content===null&&!c.processing&&!c.done);}
+function existsDoneCrucible(st){return st.crucibles.some(c=>c.done);}
+function actionExecutable(ag,act,st){
+  switch(act){
+    case 'pick':    return ag.holding===null && existsVeinReady(st);
+    case 'refine':  return ag.holding!==null && ag.holding<3 && existsFreeCrucible(st);
+    case 'collect': return ag.holding===null && existsDoneCrucible(st);
+    case 'deliver': return ag.holding===3;
+    case 'wait':    return true;
+  }
+  return false;
+}
+function condTrue(ag,cond,st){
+  switch(cond){
+    case 'empty':   return ag.holding===null;
+    case 'hold0':   return ag.holding===0;
+    case 'hold1':   return ag.holding===1;
+    case 'hold2':   return ag.holding===2;
+    case 'hold3':   return ag.holding===3;
+    case 'holdAny': return ag.holding!==null;
+    case 'doneEx':  return existsDoneCrucible(st);
+    case 'freeEx':  return existsFreeCrucible(st);
+    case 'always':  return true;
+  }
+  return false;
+}
+function evalGambit(ag,st){
+  for(const r of ag.rules){
+    if(condTrue(ag,r.cond,st) && actionExecutable(ag,r.action,st)) return r.action;
+  }
+  return 'wait';
+}
+
+// ---------- 行動実行（移動 or 相互作用）----------
+function nearestPred(act,st){
+  switch(act){
+    case 'pick':    return (x,y)=>st.veins.some(v=>v.x===x&&v.y===y&&v.ready);
+    case 'refine':  return (x,y)=>st.crucibles.some(c=>c.x===x&&c.y===y&&c.content===null&&!c.processing&&!c.done);
+    case 'collect': return (x,y)=>st.crucibles.some(c=>c.x===x&&c.y===y&&c.done);
+    case 'deliver': return (x,y)=>st.altar.x===x&&st.altar.y===y;
+  }
+  return ()=>false;
+}
+function doInteract(ag,act,st){
+  if(act==='pick'){
+    const v=st.veins.find(v=>v.x===ag.x&&v.y===ag.y&&v.ready);
+    if(v){v.ready=false;v.timer=0;ag.holding=0;}
+  }else if(act==='refine'){
+    const c=st.crucibles.find(c=>c.x===ag.x&&c.y===ag.y&&c.content===null&&!c.processing&&!c.done);
+    if(c&&ag.holding!==null){c.content=ag.holding;c.processing=true;c.progress=0;ag.holding=null;}
+  }else if(act==='collect'){
+    const c=st.crucibles.find(c=>c.x===ag.x&&c.y===ag.y&&c.done);
+    if(c){ag.holding=c.outStage;c.done=false;c.outStage=null;c.content=null;}
+  }else if(act==='deliver'){
+    if(st.altar.x===ag.x&&st.altar.y===ag.y&&ag.holding===3){
+      ag.holding=null;st.delivered++;st.points++;st.spendable++;onDeliver();
+    }
+  }
+}
+function actAgent(ag,st){
+  const act=evalGambit(ag,st);
+  ag.lastAction=ACTS.find(a=>a.k===act)?.label||act;
+  if(act==='wait')return;
+  const pred=nearestPred(act,st);
+  const res=bfsNextStep({x:ag.x,y:ag.y},pred);
+  if(res.arrived){
+    doInteract(ag,act,st);
+  }else if(res.step){
+    // 移動は moveEvery でゲート
+    if(++ag.moveTimer>=st.moveEvery){ag.moveTimer=0;ag.x=res.step.x;ag.y=res.step.y;}
+  }
+}
+
+// ---------- 1tick 進める ----------
+function stepSim(st){
+  // 機械の更新
+  for(const v of st.veins){ if(!v.ready){ if(++v.timer>=SPAWN_TICKS){v.ready=true;v.timer=0;} } }
+  for(const c of st.crucibles){
+    if(c.processing){ if(++c.progress>=PROCESS_TICKS){c.processing=false;c.done=true;c.outStage=Math.min(3,c.content+1);} }
+  }
+  // エージェント（順次評価＝資源の取り合いを自然に処理）
+  for(const ag of st.agents) actAgent(ag,st);
+  st.tick++;
+}
+
+// ============================================================
+//  描画
+// ============================================================
+const cv=document.getElementById('cv'), ctx=cv.getContext('2d');
+function draw(){
+  ctx.clearRect(0,0,cv.width,cv.height);
+  // 床グリッド
+  for(let y=0;y<ROWS;y++)for(let x=0;x<COLS;x++){
+    ctx.fillStyle=((x+y)%2)?'#15111e':'#191425';
+    ctx.fillRect(x*CELL,y*CELL,CELL,CELL);
+  }
+  ctx.strokeStyle='#2a2438';ctx.lineWidth=1;
+  for(let x=0;x<=COLS;x++){ctx.beginPath();ctx.moveTo(x*CELL,0);ctx.lineTo(x*CELL,ROWS*CELL);ctx.stroke();}
+  for(let y=0;y<=ROWS;y++){ctx.beginPath();ctx.moveTo(0,y*CELL);ctx.lineTo(COLS*CELL,y*CELL);ctx.stroke();}
+  // 脈
+  for(const v of S.veins){
+    const cx=v.x*CELL+CELL/2, cy=v.y*CELL+CELL/2;
+    ctx.fillStyle='#2c2740';roundRect(v.x*CELL+6,v.y*CELL+6,CELL-12,CELL-12,8);ctx.fill();
+    ctx.fillStyle='#5b5475';ctx.font='10px sans-serif';ctx.textAlign='center';ctx.fillText('脈',cx,v.y*CELL+18);
+    if(v.ready){ ctx.fillStyle=STAGE_COLS[0];ctx.beginPath();ctx.arc(cx,cy+4,10,0,7);ctx.fill();
+      ctx.strokeStyle='#0006';ctx.stroke(); }
+  }
+  // 坩堝
+  for(const c of S.crucibles){
+    const x=c.x*CELL,y=c.y*CELL,cx=x+CELL/2,cy=y+CELL/2;
+    ctx.fillStyle='#332a18';roundRect(x+6,y+6,CELL-12,CELL-12,8);ctx.fill();
+    ctx.strokeStyle='#6b5530';ctx.lineWidth=2;roundRect(x+6,y+6,CELL-12,CELL-12,8);ctx.stroke();
+    ctx.fillStyle='#9a7c44';ctx.font='10px sans-serif';ctx.textAlign='center';ctx.fillText('坩堝',cx,y+18);
+    if(c.processing){
+      ctx.fillStyle=STAGE_COLS[c.content];ctx.beginPath();ctx.arc(cx,cy+6,9,0,7);ctx.fill();
+      const w=(CELL-20)*(c.progress/PROCESS_TICKS);
+      ctx.fillStyle='#3a3050';ctx.fillRect(x+10,y+CELL-14,CELL-20,5);
+      ctx.fillStyle=STAGE_COLS[Math.min(3,c.content+1)];ctx.fillRect(x+10,y+CELL-14,w,5);
+    }else if(c.done){
+      ctx.save();ctx.shadowColor=STAGE_COLS[c.outStage];ctx.shadowBlur=12;
+      ctx.fillStyle=STAGE_COLS[c.outStage];ctx.beginPath();ctx.arc(cx,cy+6,11,0,7);ctx.fill();ctx.restore();
+      ctx.strokeStyle='#fff8';ctx.stroke();
+    }
+  }
+  // 祭壇
+  {const a=S.altar,x=a.x*CELL,y=a.y*CELL,cx=x+CELL/2,cy=y+CELL/2;
+   ctx.save();ctx.shadowColor='#c9a24a';ctx.shadowBlur=10;
+   ctx.fillStyle='#3a2f12';roundRect(x+6,y+6,CELL-12,CELL-12,8);ctx.fill();ctx.restore();
+   ctx.strokeStyle='#c9a24a';ctx.lineWidth=2;roundRect(x+6,y+6,CELL-12,CELL-12,8);ctx.stroke();
+   ctx.fillStyle='#c9a24a';ctx.font='10px sans-serif';ctx.textAlign='center';ctx.fillText('祭壇',cx,cy+4);}
+  // エージェント
+  for(const ag of S.agents){
+    const cx=ag.x*CELL+CELL/2, cy=ag.y*CELL+CELL/2;
+    ctx.save();ctx.shadowColor='#000a';ctx.shadowBlur=4;
+    ctx.fillStyle=ag.color;ctx.beginPath();ctx.arc(cx,cy,15,0,7);ctx.fill();ctx.restore();
+    ctx.fillStyle='#1a1626';ctx.beginPath();ctx.arc(cx-5,cy-3,2.3,0,7);ctx.arc(cx+5,cy-3,2.3,0,7);ctx.fill();
+    if(ag.id===activeAgent){ctx.strokeStyle='#fff';ctx.lineWidth=2;ctx.beginPath();ctx.arc(cx,cy,17,0,7);ctx.stroke();}
+    if(ag.holding!==null){
+      ctx.fillStyle=STAGE_COLS[ag.holding];ctx.beginPath();ctx.arc(cx,cy-20,7,0,7);ctx.fill();
+      ctx.strokeStyle='#0007';ctx.lineWidth=1;ctx.stroke();
+    }
+  }
+}
+function roundRect(x,y,w,h,r){ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);
+  ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath();}
+
+// ============================================================
+//  ループ
+// ============================================================
+let running=false, speed=1, lastT=0, acc=0, frames=0, fpsT=0, fps=0;
+function loop(t){
+  requestAnimationFrame(loop);
+  if(!lastT)lastT=t;
+  const dt=(t-lastT)/1000;lastT=t;
+  frames++;fpsT+=dt;if(fpsT>=0.5){fps=Math.round(frames/fpsT);frames=0;fpsT=0;}
+  if(running){
+    acc+=dt;
+    const interval=1/(TPS_BASE*speed);
+    let guard=0;
+    while(acc>=interval && guard<20){acc-=interval;stepSim(S);guard++;}
+  }
+  draw();
+  if(dbgOn) updateDbg();
+}
+
+// ============================================================
+//  UI
+// ============================================================
+const $=id=>document.getElementById(id);
+function refreshHUD(){
+  $('delivered').textContent=S.delivered;
+  $('points').textContent=S.spendable;
+  $('goalText').textContent=`賢者の石(赤)を ${STAGES_GOAL[goalIndex]} 個 納品`;
+  buildShop();
+}
+function buildTabs(){
+  const t=$('tabs');t.innerHTML='';
+  S.agents.forEach(ag=>{
+    const b=document.createElement('div');
+    b.className='tab'+(ag.id===activeAgent?' active':'');
+    b.textContent='ホム '+(ag.id+1);
+    b.style.borderBottomColor=ag.color;
+    b.onclick=()=>{activeAgent=ag.id;buildTabs();buildRules();};
+    t.appendChild(b);
+  });
+}
+function selectEl(options,val,onCh){
+  const s=document.createElement('select');
+  options.forEach(o=>{const op=document.createElement('option');op.value=o.k;op.textContent=o.label;
+    if(o.k===val)op.selected=true;s.appendChild(op);});
+  s.onchange=()=>onCh(s.value);
+  return s;
+}
+function buildRules(){
+  const ag=S.agents[activeAgent];const box=$('rules');box.innerHTML='';
+  ag.rules.forEach((r,i)=>{
+    const row=document.createElement('div');row.className='rule';
+    const num=document.createElement('span');num.className='num';num.textContent=(i+1);row.appendChild(num);
+    const ord=document.createElement('div');ord.className='ord';
+    const up=document.createElement('button');up.textContent='▲';up.disabled=i===0;
+    up.onclick=()=>{[ag.rules[i-1],ag.rules[i]]=[ag.rules[i],ag.rules[i-1]];buildRules();};
+    const dn=document.createElement('button');dn.textContent='▼';dn.disabled=i===ag.rules.length-1;
+    dn.onclick=()=>{[ag.rules[i+1],ag.rules[i]]=[ag.rules[i],ag.rules[i+1]];buildRules();};
+    ord.appendChild(up);ord.appendChild(dn);row.appendChild(ord);
+    row.appendChild(selectEl(CONDS,r.cond,v=>r.cond=v));
+    const ar=document.createElement('span');ar.className='arrow';ar.textContent='▶';row.appendChild(ar);
+    row.appendChild(selectEl(ACTS,r.action,v=>r.action=v));
+    const del=document.createElement('button');del.className='del';del.textContent='✕';
+    del.onclick=()=>{ag.rules.splice(i,1);buildRules();};
+    row.appendChild(del);
+    box.appendChild(row);
+  });
+  $('slotInfo').textContent=`(${ag.rules.length}/${slotLimit})`;
+  $('addRule').disabled=ag.rules.length>=slotLimit;
+}
+$('addRule').onclick=()=>{
+  const ag=S.agents[activeAgent];
+  if(ag.rules.length>=slotLimit)return;
+  ag.rules.push({cond:'always',action:'wait'});buildRules();
+};
+
+// ---------- ショップ ----------
+function shopItems(){
+  return [
+    {id:'slot', name:'ルールスロット +1', cost:2+slotLimit-4,
+     can:()=>true, buy:()=>{slotLimit++;buildRules();}},
+    {id:'speed',name:'移動速度を上げる', cost:3,
+     can:()=>S.moveEvery>1, buy:()=>{S.moveEvery=Math.max(1,S.moveEvery-1);}},
+    {id:'cru',  name:'坩堝を増設する', cost:4,
+     can:()=>S.crucibleSpots.length>0, buy:()=>{
+        const sp=S.crucibleSpots.shift();
+        S.grid[sp.y][sp.x]='crucible';
+        S.crucibles.push({x:sp.x,y:sp.y,content:null,processing:false,progress:0,done:false,outStage:null});
+     }},
+    {id:'homu', name:'ホムンクルスを増やす', cost:6,
+     can:()=>S.agentSpots.length>0, buy:()=>{
+        const sp=S.agentSpots.shift();
+        const colors=['#e0a86a','#9ad07a','#d07ab0','#b0a0e0'];
+        const id=S.agents.length;
+        const rules=[
+          {cond:'hold3',action:'deliver'},
+          {cond:'holdAny',action:'refine'},
+          {cond:'doneEx',action:'collect'},
+          {cond:'freeEx',action:'pick'},
+        ];
+        S.agents.push(mkAgent(id,sp.x,sp.y,colors[(id-1)%colors.length],rules));
+        buildTabs();
+     }},
+  ];
+}
+function buildShop(){
+  const box=$('shop');box.innerHTML='';
+  shopItems().forEach(it=>{
+    const b=document.createElement('button');
+    const affordable=S.spendable>=it.cost && it.can();
+    b.innerHTML=`<span>${it.name}</span><span class="cost">業績 ${it.cost}</span>`;
+    b.disabled=!affordable;
+    b.onclick=()=>{ if(S.spendable>=it.cost && it.can()){ S.spendable-=it.cost; it.buy(); refreshHUD(); } };
+    box.appendChild(b);
+  });
+}
+
+// ---------- 納品イベント ----------
+let toastT=null;
+function showToast(msg){
+  const el=$('toast');el.textContent=msg;el.style.opacity='1';
+  clearTimeout(toastT);toastT=setTimeout(()=>el.style.opacity='0',1400);
+}
+function onDeliver(){
+  bell();
+  refreshHUD();
+  if(S.delivered>=STAGES_GOAL[goalIndex]){
+    if(goalIndex<STAGES_GOAL.length-1){
+      goalIndex++;showToast('段階クリア！次の目標へ');
+    }else{
+      showToast('全目標達成！工房を拡張し続けよう');
+    }
+    refreshHUD();
+  }else{
+    showToast('賢者の石を納品！ +1業績');
+  }
+}
+
+// ---------- コントロール ----------
+$('play').onclick=()=>{running=!running;$('play').textContent=running?'⏸ 停止':'▶ 再生';
+  $('play').classList.toggle('on',running);ensureAudio();};
+$('step').onclick=()=>{stepSim(S);draw();refreshHUD();};
+$('reset').onclick=()=>{doReset();};
+$('spd').onclick=()=>{speed=speed===1?2:speed===2?4:1;$('spd').textContent='速度 '+speed+'x';};
+let dbgOn=false;
+$('dbgBtn').onclick=()=>{dbgOn=!dbgOn;$('dbg').style.display=dbgOn?'block':'none';
+  $('dbgBtn').classList.toggle('on',dbgOn);};
+function updateDbg(){
+  const a=S.agents.map(g=>`H${g.id+1}(${g.x},${g.y}) ${g.holding!==null?STAGE_NAME[g.holding]:'-'} :${g.lastAction}`).join('\n');
+  $('dbg').textContent=`fps ${fps}  tick ${S.tick}  spd ${speed}x\n納品 ${S.delivered} 業績 ${S.spendable}\n`+a;
+}
+function doReset(){
+  running=false;$('play').textContent='▶ 再生';$('play').classList.remove('on');
+  goalIndex=0;slotLimit=4;activeAgent=0;
+  S=freshState();
+  buildTabs();buildRules();refreshHUD();draw();
+}
+
+// ============================================================
+//  Web Audio（プロシージャル環境音＋納品ベル）
+// ============================================================
+let actx=null, masterGain=null, droneNodes=[], muted=false, ambientTimer=null;
+function ensureAudio(){
+  if(actx)return;
+  try{
+    actx=new (window.AudioContext||window.webkitAudioContext)();
+    masterGain=actx.createGain();masterGain.gain.value=muted?0:0.16;masterGain.connect(actx.destination);
+    // ドローン（低音の持続音＋ゆらぎ）
+    const base=[55,82.4,110]; // A1, E2, A2
+    base.forEach((f,i)=>{
+      const o=actx.createOscillator();o.type=i===2?'triangle':'sine';o.frequency.value=f;
+      const g=actx.createGain();g.gain.value=0.0;
+      const lfo=actx.createOscillator();lfo.frequency.value=0.05+i*0.03;
+      const lg=actx.createGain();lg.gain.value=0.04;
+      lfo.connect(lg);lg.connect(g.gain);
+      o.connect(g);g.connect(masterGain);o.start();lfo.start();
+      g.gain.value=0.05;
+      droneNodes.push(o,lfo);
+    });
+    scheduleAmbient();
+  }catch(e){console.warn('audio init failed',e);}
+}
+function scheduleAmbient(){
+  // たまに鳴る錬金釜の気泡音
+  if(!actx)return;
+  const notes=[220,277.2,329.6,440,554.4];
+  const n=notes[Math.floor(Math.random()*notes.length)];
+  softTone(n,0.5,0.04);
+  ambientTimer=setTimeout(scheduleAmbient, 2500+Math.random()*3000);
+}
+function softTone(freq,dur,vol){
+  if(!actx||muted)return;
+  const o=actx.createOscillator();o.type='sine';o.frequency.value=freq;
+  const g=actx.createGain();g.gain.value=0;
+  o.connect(g);g.connect(masterGain);
+  const now=actx.currentTime;
+  g.gain.linearRampToValueAtTime(vol,now+0.05);
+  g.gain.exponentialRampToValueAtTime(0.0001,now+dur);
+  o.start(now);o.stop(now+dur+0.05);
+}
+function bell(){ // 納品ベル（明るい和音）
+  if(!actx||muted)return;
+  [523.3,659.3,784.0].forEach((f,i)=>setTimeout(()=>softTone(f,0.9,0.07),i*60));
+}
+$('mute').onclick=()=>{
+  muted=!muted;$('mute').textContent=muted?'♪ 音 OFF':'♪ 音 ON';
+  $('mute').classList.toggle('on',!muted);
+  if(masterGain)masterGain.gain.value=muted?0:0.16;
+};
+
+// オーディオのライフサイクル（iOS/離脱対応）
+function suspendAudio(){if(actx&&actx.state==='running')actx.suspend();}
+function resumeAudio(){if(actx&&actx.state==='suspended'&&!document.hidden)actx.resume();}
+document.addEventListener('visibilitychange',()=>{document.hidden?suspendAudio():resumeAudio();});
+window.addEventListener('pagehide',()=>{if(actx)actx.suspend();});
+window.addEventListener('beforeunload',()=>{if(actx)actx.close();});
+
+// ============================================================
+//  起動
+// ============================================================
+$('startBtn').onclick=()=>{$('intro').style.display='none';ensureAudio();$('mute').classList.add('on');};
+function boot(){
+  S=freshState();
+  buildTabs();buildRules();refreshHUD();draw();
+  requestAnimationFrame(loop);
+}
+boot();
+
+// ---- node 検証用にエクスポート（ブラウザでは無視）----
+if(typeof module!=='undefined'&&module.exports){
+  module.exports={freshState,stepSim,evalGambit,bfsNextStep,STAGE_NAME};
+}
+</script>
+</body>
+</html>
