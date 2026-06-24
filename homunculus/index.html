@@ -65,7 +65,7 @@
 <body>
 <div id="app">
   <h1>HOMUNCULUS</h1>
-  <div class="tag">錬金ガンビット工場 — プロトタイプ v0.3（タイトル仮）</div>
+  <div class="tag">錬金ガンビット工場 — プロトタイプ v0.3.1（タイトル仮）</div>
   <div class="wrap">
     <div class="left">
       <div class="card">
@@ -155,6 +155,7 @@ const ACTS=[
   {k:'pick',    label:'素材を拾いに行く'},
   {k:'refine',  label:'坩堝で精製する'},
   {k:'deliver', label:'祭壇へ納品する'},
+  {k:'discard', label:'ごみ箱に捨てる'},
   {k:'wait',    label:'待機する'},
 ];
 
@@ -167,10 +168,10 @@ const TIERS=[
    slots:2, crucibles:0, shop:false,
    preset:[['empty','pick'],['holdAny','deliver']],
    msg:'まず鉛(黒)を拾って祭壇へ納品しよう'},
-  {targetStage:1, quota:4,  newActs:['refine'], newConds:['hold1'],
-   slots:3, crucibles:1, shop:true,
+  {targetStage:1, quota:4,  newActs:['refine','discard'], newConds:['hold1'],
+   slots:3, crucibles:1, shop:true, trash:true,
    preset:null,
-   msg:'坩堝＋精製＋ショップを解禁！「何か持→精製」ルールを自分で足して白(1段)を作ろう'},
+   msg:'坩堝＋精製＋ごみ箱＋ショップを解禁！「何か持→精製」を自分で足して白(1段)を作ろう'},
   {targetStage:2, quota:6,  newActs:[], newConds:['hold2'],
    slots:3, crucibles:1, shop:true,
    preset:null,
@@ -217,7 +218,7 @@ function freshState(){
     agents:[mkAgent(0,1,2,AGENT_COLORS[0],[])],
     tick:0, tier:-1, target:0, quota:0, prog:0,
     delivered:0, spendable:0,
-    acts:[], conds:[], slotLimit:3, moveEvery:2, shopOn:false,
+    acts:[], conds:[], slotLimit:3, moveEvery:2, shopOn:false, trash:null,
   };
   applyTier(st,0);
   return st;
@@ -238,6 +239,7 @@ function applyTier(st,i){
   for(const c of t.newConds) if(!st.conds.includes(c)) st.conds.push(c);
   st.target=t.targetStage; st.quota=t.quota; st.prog=0;
   ensureCrucibles(st,t.crucibles);
+  if(t.trash && !st.trash){ st.trash={x:0,y:2}; st.grid[2][0]='trash'; }
   st.shopOn=t.shop;
   if(t.preset){ for(const ag of st.agents) ag.rules=presetRules(t.preset); }
 }
@@ -280,6 +282,7 @@ function actionExecutable(ag,act,st){
     case 'pick':    return ag.holding===null && existsPickable(st);
     case 'refine':  return ag.holding!==null && ag.holding<3 && existsFreeCrucible(st);
     case 'deliver': return ag.holding!==null && st.altars.some(a=>a.stage===ag.holding);
+    case 'discard': return ag.holding!==null && !!st.trash;
     case 'wait':    return true;
   }
   return false;
@@ -310,6 +313,7 @@ function nearestPred(act,st,ag){
     case 'pick':    return (x,y)=>pickableHere(st,x,y);
     case 'refine':  return (x,y)=>st.crucibles.some(c=>c.x===x&&c.y===y&&c.content===null&&!c.processing&&!c.done);
     case 'deliver': return (x,y)=>st.altars.some(a=>a.x===x&&a.y===y&&a.stage===ag.holding);
+    case 'discard': return (x,y)=>st.trash&&st.trash.x===x&&st.trash.y===y;
   }
   return ()=>false;
 }
@@ -334,6 +338,8 @@ function doInteract(ag,act,st){
       if(s===st.target){ st.prog++; tierUp = st.prog>=st.quota && st.tier<TIERS.length-1; if(tierUp) applyTier(st, st.tier+1); }
       onDeliver(tierUp);
     }
+  }else if(act==='discard'){
+    if(st.trash&&st.trash.x===ag.x&&st.trash.y===ag.y&&ag.holding!==null){ ag.holding=null; }
   }
 }
 function actAgent(ag,st){
@@ -430,6 +436,13 @@ function draw(){
     roundRect(x+6,y+6,CELL-12,CELL-12,8);ctx.stroke();ctx.setLineDash([]);
     ctx.globalAlpha=0.45;stageDot(cx,cy+6,S.target,9);ctx.globalAlpha=1;
     ctx.fillStyle='#c9a24a';ctx.font='8px sans-serif';ctx.textAlign='center';ctx.fillText('要建設',cx,y+CELL-9);ctx.restore();
+  }
+  // ごみ箱
+  if(S.trash){
+    const x=S.trash.x*CELL,y=S.trash.y*CELL,cx=x+CELL/2,cy=y+CELL/2;
+    ctx.fillStyle='#241f30';roundRect(x+10,y+10,CELL-20,CELL-20,7);ctx.fill();
+    ctx.strokeStyle='#6a6480';ctx.lineWidth=2;ctx.setLineDash([3,3]);roundRect(x+10,y+10,CELL-20,CELL-20,7);ctx.stroke();ctx.setLineDash([]);
+    ctx.fillStyle='#9a93b5';ctx.font='10px sans-serif';ctx.textAlign='center';ctx.fillText('ごみ箱',cx,cy+3);
   }
   // 床の素材（自動排出された物）
   for(const key in S.ground){
