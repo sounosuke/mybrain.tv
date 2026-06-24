@@ -65,7 +65,7 @@
 <body>
 <div id="app">
   <h1>HOMUNCULUS</h1>
-  <div class="tag">錬金ガンビット工場 — プロトタイプ v0.2.2（タイトル仮）</div>
+  <div class="tag">錬金ガンビット工場 — プロトタイプ v0.3（タイトル仮）</div>
   <div class="wrap">
     <div class="left">
       <div class="card">
@@ -116,7 +116,8 @@
   <div class="box">
     <h2>HOMUNCULUS</h2>
     <p>君は錬金術師。盤面は直接動かさない。<span class="k">ホムンクルス</span>に「<span class="k">もし〜なら〜する</span>」のルール（ガンビット）を書き、自律で工房を回させる。</p>
-    <p>最初は<span class="k">鉛(黒)</span>を脈で拾って<span class="k">祭壇</span>へ納品するだけ。納品して実績を積むと、<span class="k">坩堝</span>・<span class="k">精製</span>・新しい条件が段階的に解禁され、白→黄→<span class="k">赤(賢者の石)</span>へと作れる物が増えていく。ルール枠はショップで拡張。</p>
+    <p>最初は<span class="k">鉛(黒)の祭壇</span>だけ。鉛を脈で拾って納品するだけだ。実績を積むと<span class="k">坩堝</span>・<span class="k">精製</span>・条件が解禁され、白→黄→<span class="k">赤(賢者の石)</span>が作れるようになる。</p>
+    <p>祭壇は段ごとに4種。<span class="k">白・黄・赤の祭壇はショップで建てる</span>。素材は自分の段の祭壇へ運ばれる。坩堝・人手・ルール枠もショップで増やせる。</p>
     <p>坩堝は精製が終わると完成品を<span class="k">隣のマスへ自動排出</span>する。それを拾って次へ運ぶ。</p>
     <p class="hint">狭い盤面に、どれだけ効率を詰め込めるか。まず▶再生で観察を。</p>
     <button class="primary" id="startBtn" style="width:100%;margin-top:8px">工房を開く</button>
@@ -190,6 +191,8 @@ let S=null;
 let activeAgent=0;
 
 const CRUCIBLE_SPOTS=[{x:3,y:2},{x:3,y:1},{x:3,y:3},{x:3,y:4}];
+const ALTAR_POS=[{x:6,y:1},{x:6,y:2},{x:6,y:3},{x:6,y:4}]; // index=段。黒/白/黄/赤の祭壇位置
+const ALTAR_COST=[0,3,5,8];                                 // 段別の祭壇建設コスト(段0=黒は初期所有)
 const AGENT_SPOTS=[{x:1,y:3},{x:1,y:1},{x:1,y:4}];
 const AGENT_COLORS=['#7ad0e0','#e0a86a','#9ad07a','#d07ab0'];
 
@@ -202,11 +205,11 @@ function freshState(){
   const grid=[];
   for(let y=0;y<ROWS;y++){const r=[];for(let x=0;x<COLS;x++)r.push('floor');grid.push(r);}
   const veins=[{x:0,y:1},{x:0,y:4}].map(v=>({x:v.x,y:v.y,ready:true,timer:0}));
-  const altar={x:6,y:2};
+  const altars=[{x:ALTAR_POS[0].x,y:ALTAR_POS[0].y,stage:0}]; // 開始は鉛(黒)の祭壇のみ
   veins.forEach(v=>grid[v.y][v.x]='vein');
-  grid[altar.y][altar.x]='altar';
+  altars.forEach(a=>grid[a.y][a.x]='altar');
   const st={
-    grid, veins, altar,
+    grid, veins, altars,
     crucibles:[],
     ground:{},               // "x,y" -> stage
     spotsLeft:CRUCIBLE_SPOTS.slice(),
@@ -276,7 +279,7 @@ function actionExecutable(ag,act,st){
   switch(act){
     case 'pick':    return ag.holding===null && existsPickable(st);
     case 'refine':  return ag.holding!==null && ag.holding<3 && existsFreeCrucible(st);
-    case 'deliver': return ag.holding===st.target;
+    case 'deliver': return ag.holding!==null && st.altars.some(a=>a.stage===ag.holding);
     case 'wait':    return true;
   }
   return false;
@@ -302,11 +305,11 @@ function evalGambit(ag,st){
 }
 
 // ---------- 行動 ----------
-function nearestPred(act,st){
+function nearestPred(act,st,ag){
   switch(act){
     case 'pick':    return (x,y)=>pickableHere(st,x,y);
     case 'refine':  return (x,y)=>st.crucibles.some(c=>c.x===x&&c.y===y&&c.content===null&&!c.processing&&!c.done);
-    case 'deliver': return (x,y)=>st.altar.x===x&&st.altar.y===y;
+    case 'deliver': return (x,y)=>st.altars.some(a=>a.x===x&&a.y===y&&a.stage===ag.holding);
   }
   return ()=>false;
 }
@@ -324,10 +327,11 @@ function doInteract(ag,act,st){
     const c=st.crucibles.find(c=>c.x===ag.x&&c.y===ag.y&&c.content===null&&!c.processing&&!c.done);
     if(c&&ag.holding!==null&&ag.holding<3){c.content=ag.holding;c.processing=true;c.progress=0;ag.holding=null;}
   }else if(act==='deliver'){
-    if(st.altar.x===ag.x&&st.altar.y===ag.y&&ag.holding===st.target){
-      ag.holding=null;st.delivered++;st.spendable++;st.prog++;
-      const tierUp = st.prog>=st.quota && st.tier<TIERS.length-1;
-      if(tierUp) applyTier(st, st.tier+1);
+    const a=st.altars.find(a=>a.x===ag.x&&a.y===ag.y&&a.stage===ag.holding);
+    if(a){
+      const s=ag.holding; ag.holding=null; st.delivered++; st.spendable++;
+      let tierUp=false;
+      if(s===st.target){ st.prog++; tierUp = st.prog>=st.quota && st.tier<TIERS.length-1; if(tierUp) applyTier(st, st.tier+1); }
       onDeliver(tierUp);
     }
   }
@@ -336,7 +340,7 @@ function actAgent(ag,st){
   const act=evalGambit(ag,st);
   ag.lastAction=ACTS.find(a=>a.k===act)?.label||act;
   if(act==='wait')return;
-  const pred=nearestPred(act,st);
+  const pred=nearestPred(act,st,ag);
   const res=bfsNextStep({x:ag.x,y:ag.y},pred);
   if(res.arrived){
     doInteract(ag,act,st);
@@ -410,14 +414,23 @@ function draw(){
       ctx.save();ctx.shadowColor=STAGE_COLS[c.outStage];ctx.shadowBlur=12;stageDot(cx,cy+6,c.outStage,11);ctx.restore();
     }
   }
-  // 祭壇
-  {const a=S.altar,x=a.x*CELL,y=a.y*CELL,cx=x+CELL/2,cy=y+CELL/2;
-   ctx.save();ctx.shadowColor='#c9a24a';ctx.shadowBlur=10;
-   ctx.fillStyle='#3a2f12';roundRect(x+6,y+6,CELL-12,CELL-12,8);ctx.fill();ctx.restore();
-   ctx.strokeStyle='#c9a24a';ctx.lineWidth=2;roundRect(x+6,y+6,CELL-12,CELL-12,8);ctx.stroke();
-   ctx.fillStyle='#c9a24a';ctx.font='10px sans-serif';ctx.textAlign='center';ctx.fillText('祭壇',cx,cy+4);
-   // 目標段の小マーク
-   stageDot(cx,y+CELL-16,S.target,6);}
+  // 祭壇（段ごと）。目標段の祭壇は白枠で強調
+  for(const a of S.altars){
+    const x=a.x*CELL,y=a.y*CELL,cx=x+CELL/2,cy=y+CELL/2,isT=(a.stage===S.target);
+    ctx.save();ctx.shadowColor=isT?'#ffffff':'#c9a24a';ctx.shadowBlur=isT?14:8;
+    ctx.fillStyle='#3a2f12';roundRect(x+6,y+6,CELL-12,CELL-12,8);ctx.fill();ctx.restore();
+    ctx.strokeStyle=isT?'#ffffff':'#c9a24a';ctx.lineWidth=2;roundRect(x+6,y+6,CELL-12,CELL-12,8);ctx.stroke();
+    ctx.fillStyle='#c9a24a';ctx.font='9px sans-serif';ctx.textAlign='center';ctx.fillText('祭壇',cx,y+17);
+    stageDot(cx,cy+6,a.stage,9);
+  }
+  // 目標段の祭壇が未建設なら、設置予定地をゴースト表示
+  if(!S.altars.some(a=>a.stage===S.target)){
+    const p=ALTAR_POS[S.target],x=p.x*CELL,y=p.y*CELL,cx=x+CELL/2,cy=y+CELL/2;
+    ctx.save();ctx.setLineDash([4,4]);ctx.strokeStyle='#c9a24a88';ctx.lineWidth=2;
+    roundRect(x+6,y+6,CELL-12,CELL-12,8);ctx.stroke();ctx.setLineDash([]);
+    ctx.globalAlpha=0.45;stageDot(cx,cy+6,S.target,9);ctx.globalAlpha=1;
+    ctx.fillStyle='#c9a24a';ctx.font='8px sans-serif';ctx.textAlign='center';ctx.fillText('要建設',cx,y+CELL-9);ctx.restore();
+  }
   // 床の素材（自動排出された物）
   for(const key in S.ground){
     const [gx,gy]=key.split(',').map(Number);
@@ -518,7 +531,7 @@ $('addRule').onclick=()=>{
 
 // ---------- ショップ ----------
 function shopItems(){
-  return [
+  const items=[
     {name:'ルールスロット +1', cost:2,
      can:()=>true, buy:()=>{S.slotLimit++;}},
     {name:'移動速度を上げる', cost:3,
@@ -535,6 +548,14 @@ function shopItems(){
         buildTabs();
      }},
   ];
+  // 段ごとの祭壇建設（黒は初期所有。白/黄/赤を建てる）
+  for(let s=1;s<=3;s++){
+    if(!S.altars.some(a=>a.stage===s)){
+      items.push({name:`祭壇(${STAGE_NAME[s]})を建てる`, cost:ALTAR_COST[s],
+        can:()=>true, buy:()=>{ const p=ALTAR_POS[s]; S.grid[p.y][p.x]='altar'; S.altars.push({x:p.x,y:p.y,stage:s}); }});
+    }
+  }
+  return items;
 }
 function buildShop(){
   const box=$('shop');box.innerHTML='';
