@@ -8,7 +8,7 @@
   :root{
     --bg:#15131c; --panel:#1f1b2b; --panel2:#272036; --ink:#e9e4f5; --sub:#a99fc4;
     --line:#3a3350; --accent:#c9a24a; --accent2:#7a5cc4; --good:#5fd08a; --bad:#e0617a;
-    --t0:#5bc8e0; --t1:#e0617a;
+    --t0:#34d6e6; --t1:#ff7046;
   }
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);
@@ -55,7 +55,7 @@
 <body>
 <div id="app">
   <h1>HOMUNCULUS</h1>
-  <div class="tag">AI戦闘アリーナ — プロト v0.5（カルネージハートEXA型・タイトル仮）</div>
+  <div class="tag">AI戦闘アリーナ — プロト v0.5.1（GLADIABOTS風ビジュアル・タイトル仮）</div>
   <div class="wrap">
     <div class="left">
       <div class="card">
@@ -151,7 +151,7 @@ function defaultEnemyChip(){
 }
 function mkBot(id,team,x,y,chip){
   return {id,team,x,y,hp:100,maxHp:100,reload:0,alive:true,chip,
-          color:team===0?'#5bc8e0':'#e0617a',home:{x,y}};
+          color:team===0?'#34d6e6':'#ff7046',home:{x,y},flash:0};
 }
 function freshState(){
   const bots=[
@@ -202,7 +202,7 @@ function performAction(b,op){
   const dx=e.x-b.x,dy=e.y-b.y,d=Math.hypot(dx,dy)||1;
   if(op==='approach'){ if(d>BOT_R*1.6){b.x+=dx/d*MOVE;b.y+=dy/d*MOVE;clampPos(b);} }
   else if(op==='retreat'){ b.x-=dx/d*MOVE;b.y-=dy/d*MOVE;clampPos(b); }
-  else if(op==='shoot'){ if(d<=RANGE&&b.reload<=0){ e.hp-=DMG;b.reload=COOLDOWN;
+  else if(op==='shoot'){ if(d<=RANGE&&b.reload<=0){ e.hp-=DMG;b.reload=COOLDOWN;b.flash=4;
       S.shots.push({x1:b.x,y1:b.y,x2:e.x,y2:e.y,life:5,col:b.color}); } }
 }
 function stepSim(){
@@ -225,33 +225,62 @@ function stepSim(){
 //  描画（アリーナ）
 // ============================================================
 const cv=document.getElementById('cv'), ctx=cv.getContext('2d');
+function roundRectS(x,y,w,h,r){ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);
+  ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath();}
+function rgba(team,a){return team===0?`rgba(52,214,230,${a})`:`rgba(255,112,70,${a})`;}
 function draw(){
-  ctx.clearRect(0,0,W,H);
-  // 背景グリッド
-  ctx.strokeStyle='#1c1828';ctx.lineWidth=1;
-  for(let x=0;x<=W;x+=40){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke();}
-  for(let y=0;y<=H;y+=40){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}
-  // 弾道
-  for(const s of S.shots){ctx.strokeStyle=s.col;ctx.globalAlpha=s.life/6;ctx.lineWidth=2;
-    ctx.beginPath();ctx.moveTo(s.x1,s.y1);ctx.lineTo(s.x2,s.y2);ctx.stroke();ctx.globalAlpha=1;}
+  // 背景：ビネット
+  const g=ctx.createRadialGradient(W/2,H/2,30,W/2,H/2,W*0.72);
+  g.addColorStop(0,'#11151e');g.addColorStop(1,'#070a10');
+  ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
+  // 微グリッド
+  ctx.strokeStyle='rgba(130,150,190,0.05)';ctx.lineWidth=1;
+  for(let x=30;x<W;x+=30){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke();}
+  for(let y=30;y<H;y+=30){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}
+  // アリーナ枠
+  ctx.strokeStyle='rgba(130,150,190,0.16)';ctx.lineWidth=2;roundRectS(7,7,W-14,H-14,18);ctx.stroke();
+  // 照準ライン
+  if(S.phase==='fighting'){
+    for(const b of S.bots){ if(!b.alive)continue; const e=nearestEnemy(b); if(!e)continue;
+      ctx.strokeStyle=rgba(b.team,0.16);ctx.setLineDash([4,5]);ctx.lineWidth=1.4;
+      ctx.beginPath();ctx.moveTo(b.x,b.y);ctx.lineTo(e.x,e.y);ctx.stroke();ctx.setLineDash([]);
+    }
+  }
+  // ビーム
+  for(const s of S.shots){
+    ctx.save();ctx.globalAlpha=Math.min(1,s.life/5);ctx.shadowColor=s.col;ctx.shadowBlur=10;
+    ctx.strokeStyle=s.col;ctx.lineWidth=2.6;ctx.lineCap='round';
+    ctx.beginPath();ctx.moveTo(s.x1,s.y1);ctx.lineTo(s.x2,s.y2);ctx.stroke();
+    ctx.fillStyle='#fff';ctx.globalAlpha=Math.min(1,s.life/5)*0.9;ctx.beginPath();ctx.arc(s.x2,s.y2,3.5,0,7);ctx.fill();
+    ctx.restore();ctx.lineCap='butt';
+  }
   // ボット
   for(const b of S.bots){
-    if(!b.alive){ctx.strokeStyle='#3a3350';ctx.lineWidth=2;
-      ctx.beginPath();ctx.moveTo(b.x-8,b.y-8);ctx.lineTo(b.x+8,b.y+8);ctx.moveTo(b.x+8,b.y-8);ctx.lineTo(b.x-8,b.y+8);ctx.stroke();continue;}
-    ctx.save();ctx.shadowColor='#000a';ctx.shadowBlur=4;
+    if(!b.alive){ ctx.strokeStyle='rgba(150,155,175,0.3)';ctx.lineWidth=2;
+      ctx.beginPath();ctx.arc(b.x,b.y,BOT_R,0,7);ctx.stroke();
+      ctx.beginPath();ctx.moveTo(b.x-6,b.y-6);ctx.lineTo(b.x+6,b.y+6);ctx.moveTo(b.x+6,b.y-6);ctx.lineTo(b.x-6,b.y+6);ctx.stroke();continue; }
+    const e=nearestEnemy(b), ang=e?Math.atan2(e.y-b.y,e.x-b.x):0;
+    // 発光ボディ
+    ctx.save();ctx.shadowColor=b.color;ctx.shadowBlur=b.flash>0?20:11;
     ctx.fillStyle=b.color;ctx.beginPath();ctx.arc(b.x,b.y,BOT_R,0,7);ctx.fill();ctx.restore();
-    ctx.fillStyle='#15111e';ctx.beginPath();ctx.arc(b.x-5,b.y-3,2.4,0,7);ctx.arc(b.x+5,b.y-3,2.4,0,7);ctx.fill();
-    // HPバー
-    const w=28,hp=Math.max(0,b.hp)/b.maxHp;
-    ctx.fillStyle='#000a';ctx.fillRect(b.x-w/2,b.y-BOT_R-9,w,4);
-    ctx.fillStyle=b.team===0?'#5bc8e0':'#e0617a';ctx.fillRect(b.x-w/2,b.y-BOT_R-9,w*hp,4);
+    ctx.fillStyle='#0a0d14';ctx.beginPath();ctx.arc(b.x,b.y,BOT_R-3.5,0,7);ctx.fill();
+    // 砲塔
+    ctx.strokeStyle=b.color;ctx.lineWidth=4;ctx.lineCap='round';
+    ctx.beginPath();ctx.moveTo(b.x,b.y);ctx.lineTo(b.x+Math.cos(ang)*(BOT_R+5),b.y+Math.sin(ang)*(BOT_R+5));ctx.stroke();ctx.lineCap='butt';
+    // コア
+    ctx.fillStyle=b.color;ctx.beginPath();ctx.arc(b.x,b.y,3,0,7);ctx.fill();
+    if(b.flash>0)b.flash--;
+    // HPリング
+    const frac=Math.max(0,b.hp)/b.maxHp;
+    ctx.strokeStyle='rgba(255,255,255,0.10)';ctx.lineWidth=3;ctx.beginPath();ctx.arc(b.x,b.y,BOT_R+4.5,0,7);ctx.stroke();
+    ctx.strokeStyle=b.color;ctx.lineWidth=3;ctx.beginPath();ctx.arc(b.x,b.y,BOT_R+4.5,-Math.PI/2,-Math.PI/2+frac*Math.PI*2);ctx.stroke();
   }
   // 勝敗表示
   if(S.phase==='over'){
-    ctx.fillStyle='#000a';ctx.fillRect(0,H/2-26,W,52);
-    ctx.fillStyle= S.winner===0?'#5fd08a':(S.winner===1?'#e0617a':'#c9a24a');
-    ctx.font='bold 26px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';
-    ctx.fillText(S.winner===0?'WIN — 自軍の勝利':(S.winner===1?'LOSE — 敗北':'DRAW — 時間切れ'),W/2,H/2);
+    ctx.fillStyle='rgba(7,10,16,0.72)';ctx.fillRect(0,H/2-30,W,60);
+    ctx.fillStyle= S.winner===0?'#34d6e6':(S.winner===1?'#ff7046':'#c9a24a');
+    ctx.font='bold 27px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';
+    ctx.fillText(S.winner===0?'VICTORY — 自軍の勝利':(S.winner===1?'DEFEAT — 敗北':'DRAW — 時間切れ'),W/2,H/2);
     ctx.textBaseline='alphabetic';
   }
 }
@@ -288,9 +317,10 @@ function opLabel(cell){
 function curChip(){return playerBots()[activeAgent].chip;}
 function buildChip(){selectedCell=null;wiringFrom=null;$('chip').onclick=onChipClick;drawChip();buildInspector();}
 function wireArrow(a,b,col){
-  const dx=b.x-a.x,dy=b.y-a.y,len=Math.hypot(dx,dy)||1,ux=dx/len,uy=dy/len;
+  const mx=(a.x+b.x)/2, my=(a.y+b.y)/2+18; // 下に膨らむ曲線
+  const dx=b.x-mx,dy=b.y-my,len=Math.hypot(dx,dy)||1,ux=dx/len,uy=dy/len;
   const ex=b.x-ux*15,ey=b.y-uy*15,ah=7,px=-uy,py=ux;
-  return `<line x1="${a.x}" y1="${a.y}" x2="${ex}" y2="${ey}" stroke="${col}" stroke-width="2"/>`+
+  return `<path d="M ${a.x} ${a.y} Q ${mx} ${my} ${ex} ${ey}" fill="none" stroke="${col}" stroke-width="2"/>`+
     `<polygon points="${ex},${ey} ${ex-ux*ah+px*ah*0.6},${ey-uy*ah+py*ah*0.6} ${ex-ux*ah-px*ah*0.6},${ey-uy*ah-py*ah*0.6}" fill="${col}"/>`;
 }
 function portCircle(i,which,col,glyph){
@@ -306,10 +336,12 @@ function drawChip(){
   }});
   chip.cells.forEach((cell,i)=>{
     const b=box(i),isStart=chip.start===i,isSel=selectedCell===i;
-    const fill=cell.kind==='empty'?'#221d30':(cell.kind==='cond'?'#2a2342':'#2f2a1c');
-    s+=`<rect data-cell="${i}" x="${b.x}" y="${b.y}" width="${CW}" height="${CH}" rx="10" fill="${fill}" stroke="${isStart?'#c9a24a':(isSel?'#7a5cc4':'#3a3350')}" stroke-width="${isStart||isSel?2.5:1}"/>`;
+    const fill=cell.kind==='empty'?'#191622':(cell.kind==='cond'?'#142a2c':'#2c2516');
+    const lblCol=cell.kind==='cond'?'#7fe0d8':(cell.kind==='act'?'#e6c46a':'#6b6480');
+    s+=`<rect data-cell="${i}" x="${b.x}" y="${b.y}" width="${CW}" height="${CH}" rx="12" fill="${fill}" stroke="${isStart?'#c9a24a':(isSel?'#7a5cc4':'#3a3350')}" stroke-width="${isStart||isSel?2.5:1}"/>`;
+    if(cell.kind!=='empty'){const tag=cell.kind==='cond'?'条件':'行動';s+=`<text x="${b.x+CW-8}" y="${b.y+15}" font-size="8" text-anchor="end" fill="${lblCol}" opacity="0.8" pointer-events="none">${tag}</text>`;}
     s+=`<text x="${b.x+CW/2}" y="${b.y+18}" font-size="9" text-anchor="middle" fill="#a99fc4" pointer-events="none">${CELL_NAMES[i]}</text>`;
-    s+=`<text x="${b.x+CW/2}" y="${b.y+CH/2+10}" font-size="11" text-anchor="middle" fill="#e9e4f5" pointer-events="none">${cell.kind==='empty'?'空':opLabel(cell)}</text>`;
+    s+=`<text x="${b.x+CW/2}" y="${b.y+CH/2+10}" font-size="11" text-anchor="middle" fill="${lblCol}" pointer-events="none">${cell.kind==='empty'?'空':opLabel(cell)}</text>`;
     s+=`<circle data-start="${i}" cx="${b.x+14}" cy="${b.y+14}" r="9" fill="${isStart?'#c9a24a':'#15111e'}" stroke="#c9a24a" stroke-width="1.5"/>`;
     s+=`<text x="${b.x+14}" y="${b.y+18}" font-size="9" text-anchor="middle" fill="${isStart?'#231a06':'#c9a24a'}" pointer-events="none">S</text>`;
     if(cell.kind==='cond'){s+=portCircle(i,'a','#5fd08a','○');s+=portCircle(i,'b','#e0617a','✕');}
