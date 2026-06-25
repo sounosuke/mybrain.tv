@@ -55,7 +55,7 @@
 <body>
 <div id="app">
   <h1>HOMUNCULUS</h1>
-  <div class="tag">AI戦闘アリーナ — プロト v0.5.1（GLADIABOTS風ビジュアル・タイトル仮）</div>
+  <div class="tag">AI戦闘アリーナ — プロト v0.5.2（EXA式・カウンタ継続評価・タイトル仮）</div>
   <div class="wrap">
     <div class="left">
       <div class="card">
@@ -85,7 +85,7 @@
         <div class="tabs" id="tabs"></div>
         <svg id="chip" viewBox="0 0 320 320"></svg>
         <div id="inspector"></div>
-        <div class="hint">上から評価し、最初に到達した<b>行動</b>を実行。条件の<span style="color:var(--good)">○</span>/<span style="color:var(--bad)">✕</span>ポートをタップ→繋ぎ先セルをタップで配線。金丸＝開始セル。対象は当面「最も近い敵」。AIを直して<b>戦闘開始</b>で再戦。</div>
+        <div class="hint">EXA式：カウンタが流れ続ける。条件は○/✕で分岐、<b>行動</b>は実行後<span style="color:var(--accent)">▶</span>の配線先へ進む（未配線なら先頭へ）。ポートをタップ→繋ぎ先セルをタップで配線。金丸＝開始セル。手順やループも組める。対象は当面「最も近い敵」。</div>
       </div>
     </div>
   </div>
@@ -135,8 +135,8 @@ function defaultPlayerChip(){
   // 射程内→撃つ / それ以外→接近（素直で強い基本形。後退などはプレイヤーが追加して試す）
   return {start:0,cells:[
     {kind:'cond',op:'inRange', out:[1,2]},  //0
-    {kind:'act', op:'shoot',   out:[-1,-1]},//1
-    {kind:'act', op:'approach',out:[-1,-1]},//2
+    {kind:'act', op:'shoot',   out:[0,-1]}, //1 →先頭へ
+    {kind:'act', op:'approach',out:[0,-1]}, //2 →先頭へ
     emptyCell(),emptyCell(),emptyCell(),emptyCell(),emptyCell(),emptyCell(),
   ]};
 }
@@ -144,13 +144,13 @@ function defaultEnemyChip(){
   // 敵が「近い」まで撃たない＝レンジを捨てた未熟AI（自軍がレンジ有利で勝てる）
   return {start:0,cells:[
     {kind:'cond',op:'enemyNear',out:[1,2]},
-    {kind:'act', op:'shoot',  out:[-1,-1]},
-    {kind:'act', op:'approach',out:[-1,-1]},
+    {kind:'act', op:'shoot',  out:[0,-1]},
+    {kind:'act', op:'approach',out:[0,-1]},
     emptyCell(),emptyCell(),emptyCell(),emptyCell(),emptyCell(),emptyCell(),
   ]};
 }
 function mkBot(id,team,x,y,chip){
-  return {id,team,x,y,hp:100,maxHp:100,reload:0,alive:true,chip,
+  return {id,team,x,y,hp:100,maxHp:100,reload:0,alive:true,chip,pc:chip.start,
           color:team===0?'#34d6e6':'#ff7046',home:{x,y},flash:0};
 }
 function freshState(){
@@ -164,7 +164,7 @@ function freshState(){
   return {bots,shots:[],tick:0,phase:'ready',winner:-2};
 }
 function resetField(){
-  for(const b of S.bots){b.x=b.home.x;b.y=b.home.y;b.hp=b.maxHp;b.reload=0;b.alive=true;}
+  for(const b of S.bots){b.x=b.home.x;b.y=b.home.y;b.hp=b.maxHp;b.reload=0;b.alive=true;b.pc=b.chip.start;b.flash=0;}
   S.shots=[];S.tick=0;S.phase='ready';S.winner=-2;
 }
 const playerBots=()=>S.bots.filter(b=>b.team===0);
@@ -182,18 +182,24 @@ function evalCond(b,op){
   }
   return false;
 }
-function decideAction(b){
-  let pc=b.chip.start,g=0;
+// EXA方式：プログラムカウンタが流れ続ける。条件は即分岐、行動は実行してtick消費し▶の配線先へ。
+function tickBot(b){
+  let g=0;
   while(g++<24){
-    const c=b.chip.cells[pc];
-    if(!c||c.kind==='empty') return 'idle';
-    if(c.kind==='act') return c.op;
-    const r=evalCond(b,c.op);
-    const n=r?c.out[0]:c.out[1];
-    if(n==null||n<0) return 'idle';
-    pc=n;
+    const c=b.chip.cells[b.pc];
+    if(!c||c.kind==='empty'){ b.pc=b.chip.start; return; }      // 行き止まり→先頭(待機)
+    if(c.kind==='cond'){
+      const r=evalCond(b,c.op);
+      const n=r?c.out[0]:c.out[1];
+      if(n==null||n<0){ b.pc=b.chip.start; return; }            // 未配線→先頭(待機)
+      b.pc=n; continue;                                          // 条件は即たどる
+    }
+    performAction(b,c.op);                                       // 行動を実行
+    const n=c.out[0];
+    b.pc=(n!=null&&n>=0)?n:b.chip.start;                         // 次へ。未配線なら先頭へ
+    return;                                                      // 行動でtick消費
   }
-  return 'idle';
+  b.pc=b.chip.start;                                             // 条件ループ保険
 }
 function clampPos(b){b.x=Math.max(BOT_R,Math.min(W-BOT_R,b.x));b.y=Math.max(BOT_R,Math.min(H-BOT_R,b.y));}
 function performAction(b,op){
@@ -208,7 +214,7 @@ function performAction(b,op){
 function stepSim(){
   if(S.phase!=='fighting')return;
   for(const b of S.bots) if(b.alive&&b.reload>0)b.reload--;
-  for(const b of S.bots){ if(b.alive){ const a=decideAction(b); performAction(b,a); } }
+  for(const b of S.bots){ if(b.alive) tickBot(b); }
   for(const b of S.bots) if(b.alive&&b.hp<=0)b.alive=false;
   for(const s of S.shots)s.life--; S.shots=S.shots.filter(s=>s.life>0);
   S.tick++;
@@ -308,7 +314,9 @@ const CELL_NAMES=['①','②','③','④','⑤','⑥','⑦','⑧','⑨'];
 const CW=96,CH=86,XS=[10,112,214],YS=[12,114,216];
 function box(i){return {x:XS[i%3],y:YS[(i/3|0)]};}
 function center(i){const b=box(i);return {x:b.x+CW/2,y:b.y+CH/2};}
-function portPos(i,which){const b=box(i),by=b.y+CH;return which==='a'?{x:b.x+CW*0.30,y:by}:{x:b.x+CW*0.70,y:by};}
+function portPos(i,which,cell){const b=box(i),by=b.y+CH;
+  if(cell&&cell.kind==='act')return {x:b.x+CW/2,y:by};
+  return which==='a'?{x:b.x+CW*0.30,y:by}:{x:b.x+CW*0.70,y:by};}
 function opLabel(cell){
   if(cell.kind==='act') return (ACT_OPS.find(o=>o.k===cell.op)||{l:cell.op}).l;
   if(cell.kind==='cond')return (COND_OPS.find(o=>o.k===cell.op)||{l:cell.op}).l;
@@ -323,17 +331,21 @@ function wireArrow(a,b,col){
   return `<path d="M ${a.x} ${a.y} Q ${mx} ${my} ${ex} ${ey}" fill="none" stroke="${col}" stroke-width="2"/>`+
     `<polygon points="${ex},${ey} ${ex-ux*ah+px*ah*0.6},${ey-uy*ah+py*ah*0.6} ${ex-ux*ah-px*ah*0.6},${ey-uy*ah-py*ah*0.6}" fill="${col}"/>`;
 }
-function portCircle(i,which,col,glyph){
-  const p=portPos(i,which),hot=wiringFrom&&wiringFrom.cell===i&&wiringFrom.which===which;
+function portCircle(i,which,cell,col,glyph){
+  const p=portPos(i,which,cell),hot=wiringFrom&&wiringFrom.cell===i&&wiringFrom.which===which;
   return `<circle data-port="${i}" data-which="${which}" cx="${p.x}" cy="${p.y}" r="${hot?11:9}" fill="${hot?col:'#15111e'}" stroke="${col}" stroke-width="2"/>`+
     `<text x="${p.x}" y="${p.y+4}" font-size="10" text-anchor="middle" fill="${hot?'#15111e':col}" pointer-events="none">${glyph}</text>`;
 }
 function drawChip(){
   const chip=curChip(),svg=$('chip');let s='';
-  chip.cells.forEach((cell,i)=>{ if(cell.kind==='cond'){
-    if(cell.out[0]>=0)s+=wireArrow(portPos(i,'a'),center(cell.out[0]),'#5fd08a');
-    if(cell.out[1]>=0)s+=wireArrow(portPos(i,'b'),center(cell.out[1]),'#e0617a');
-  }});
+  chip.cells.forEach((cell,i)=>{
+    if(cell.kind==='cond'){
+      if(cell.out[0]>=0)s+=wireArrow(portPos(i,'a',cell),center(cell.out[0]),'#5fd08a');
+      if(cell.out[1]>=0)s+=wireArrow(portPos(i,'b',cell),center(cell.out[1]),'#e0617a');
+    }else if(cell.kind==='act'){
+      if(cell.out[0]>=0)s+=wireArrow(portPos(i,'a',cell),center(cell.out[0]),'#e6c46a');
+    }
+  });
   chip.cells.forEach((cell,i)=>{
     const b=box(i),isStart=chip.start===i,isSel=selectedCell===i;
     const fill=cell.kind==='empty'?'#191622':(cell.kind==='cond'?'#142a2c':'#2c2516');
@@ -344,7 +356,8 @@ function drawChip(){
     s+=`<text x="${b.x+CW/2}" y="${b.y+CH/2+10}" font-size="11" text-anchor="middle" fill="${lblCol}" pointer-events="none">${cell.kind==='empty'?'空':opLabel(cell)}</text>`;
     s+=`<circle data-start="${i}" cx="${b.x+14}" cy="${b.y+14}" r="9" fill="${isStart?'#c9a24a':'#15111e'}" stroke="#c9a24a" stroke-width="1.5"/>`;
     s+=`<text x="${b.x+14}" y="${b.y+18}" font-size="9" text-anchor="middle" fill="${isStart?'#231a06':'#c9a24a'}" pointer-events="none">S</text>`;
-    if(cell.kind==='cond'){s+=portCircle(i,'a','#5fd08a','○');s+=portCircle(i,'b','#e0617a','✕');}
+    if(cell.kind==='cond'){s+=portCircle(i,'a',cell,'#5fd08a','○');s+=portCircle(i,'b',cell,'#e0617a','✕');}
+    else if(cell.kind==='act'){s+=portCircle(i,'a',cell,'#e6c46a','▶');}
   });
   if(wiringFrom)s+=`<text x="160" y="9" font-size="10" text-anchor="middle" fill="#c9a24a">繋ぎ先のセルをタップ</text>`;
   svg.innerHTML=s;
@@ -360,6 +373,7 @@ function onChipClick(e){
   if(cellEl){const i=+cellEl.dataset.cell;
     if(wiringFrom){const c=chip.cells[wiringFrom.cell];
       if(c.kind==='cond')c.out[wiringFrom.which==='a'?0:1]=i;
+      else if(c.kind==='act')c.out[0]=i;
       wiringFrom=null;drawChip();return;}
     selectedCell=i;drawChip();buildInspector();return;}
 }
@@ -377,7 +391,7 @@ function buildInspector(){
     const ops=cell.kind==='act'?ACT_OPS:COND_OPS;
     html+=`<select id="opSel">`+ops.map(o=>`<option value="${o.k}" ${o.k===cell.op?'selected':''}>${o.l}</option>`).join('')+`</select>`;
     if(cell.kind==='cond')html+=`<div class="hint" style="margin-top:6px">下の<span style="color:var(--good)">○</span>=成立 / <span style="color:var(--bad)">✕</span>=不成立 の繋ぎ先を配線</div>`;
-    else html+=`<div class="hint" style="margin-top:6px">行動は終端。ここに到達したら実行される</div>`;
+    else html+=`<div class="hint" style="margin-top:6px">実行後は<span style="color:var(--accent)">▶</span>の配線先へ進む（未配線なら先頭へ戻る）</div>`;
   }
   html+=`</div>`;
   boxEl.innerHTML=html;
@@ -385,7 +399,7 @@ function buildInspector(){
     btn.onclick=()=>{
       if(btn.dataset.ins==='start')chip.start=i;
       else if(btn.dataset.ins==='kind'){const k=btn.dataset.k;cell.kind=k;
-        if(k==='act'){cell.op='approach';cell.out=[-1,-1];}
+        if(k==='act'){cell.op='approach';cell.out=[chip.start,-1];}
         else if(k==='cond'){cell.op='inRange';cell.out=[-1,-1];}
         else{cell.op='';cell.out=[-1,-1];}}
       drawChip();buildInspector();};
@@ -422,7 +436,7 @@ $('spd').onclick=()=>{speed=speed===1?2:speed===2?4:1;$('spd').textContent='速�
 let dbgOn=false;
 $('dbgBtn').onclick=()=>{dbgOn=!dbgOn;$('dbg').style.display=dbgOn?'block':'none';$('dbgBtn').classList.toggle('on',dbgOn);};
 function updateDbg(){
-  const a=S.bots.map(b=>`B${b.id}${b.team?'敵':'自'} hp${Math.max(0,b.hp|0)} ${b.alive?decideAction(b):'×'}`).join('\n');
+  const a=S.bots.map(b=>{const c=b.chip.cells[b.pc];return `B${b.id}${b.team?'敵':'自'} hp${Math.max(0,b.hp|0)} pc${b.pc}:${b.alive?(c?(c.op||c.kind):'-'):'×'}`;}).join('\n');
   $('dbg').textContent=`fps ${fps} tick ${S.tick} ${S.phase}\n`+a;
 }
 
@@ -453,7 +467,7 @@ function boot(){S=freshState();buildTabs();buildChip();draw();requestAnimationFr
 boot();
 
 if(typeof module!=='undefined'&&module.exports){
-  module.exports={freshState,stepSim,decideAction,defaultPlayerChip,defaultEnemyChip,
+  module.exports={freshState,stepSim,tickBot,defaultPlayerChip,defaultEnemyChip,
     setState:s=>{S=s;},getState:()=>S};
 }
 </script>
