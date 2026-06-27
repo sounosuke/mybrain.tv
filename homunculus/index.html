@@ -3,36 +3,27 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-<title>HOMUNCULUS — 360°TD × ユニットAI (仮)</title>
+<title>HOMUNCULUS — 360°TD × 内部ベルト工場 (仮)</title>
 <style>
-  :root{
-    --bg:#15131c; --panel:#1f1b2b; --panel2:#272036; --ink:#e9e4f5; --sub:#a99fc4;
-    --line:#3a3350; --accent:#c9a24a; --accent2:#7a5cc4; --good:#5fd08a; --bad:#e0617a;
-    --ally:#34d6e6; --enemy:#ff7046; --col:#6fd88a;
-  }
+  :root{--bg:#15131c;--panel:#1f1b2b;--panel2:#272036;--ink:#e9e4f5;--sub:#a99fc4;--line:#3a3350;--accent:#c9a24a;--accent2:#7a5cc4;--good:#5fd08a;--bad:#e0617a;}
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-  html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);
-    font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Noto Sans JP",sans-serif;overscroll-behavior:none;touch-action:manipulation}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Noto Sans JP",sans-serif;overscroll-behavior:none;touch-action:manipulation}
   #app{max-width:980px;margin:0 auto;padding:env(safe-area-inset-top) 10px 24px}
   h1{font-size:15px;letter-spacing:.18em;margin:10px 2px 2px;color:var(--accent);font-weight:700}
   .tag{font-size:11px;color:var(--sub);margin:0 2px 8px}
   .wrap{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-start}
-  .left{flex:1 1 400px;min-width:320px}
-  .right{flex:1 1 300px;min-width:280px}
+  .left{flex:1 1 400px;min-width:320px}.right{flex:1 1 300px;min-width:280px}
   .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px;margin-bottom:10px}
-  canvas{width:100%;height:auto;display:block;border-radius:10px;background:#080a10}
+  canvas{width:100%;height:auto;display:block;border-radius:10px;background:#080a10;cursor:pointer}
   .status{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:13px;margin-bottom:8px;flex-wrap:wrap}
-  .pill{background:var(--panel2);border:1px solid var(--line);border-radius:999px;padding:3px 10px;font-size:12px}
-  .pill b{color:var(--accent)}
+  .pill{background:var(--panel2);border:1px solid var(--line);border-radius:999px;padding:3px 10px;font-size:12px}.pill b{color:var(--accent)}
   .row{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
   button{font-family:inherit;font-size:13px;color:var(--ink);background:var(--panel2);border:1px solid var(--line);border-radius:9px;padding:8px 12px;cursor:pointer}
-  button:hover{border-color:var(--accent2)}
-  button.primary{background:var(--accent2);border-color:var(--accent2);font-weight:700}
-  button.on{background:var(--accent);border-color:var(--accent);color:#231a06;font-weight:700}
-  button:disabled{opacity:.4;cursor:not-allowed}
+  button:hover{border-color:var(--accent2)}button.primary{background:var(--accent2);border-color:var(--accent2);font-weight:700}
+  button.on{background:var(--accent);border-color:var(--accent);color:#231a06;font-weight:700}button:disabled{opacity:.4;cursor:not-allowed}
   .sect{font-size:11px;letter-spacing:.12em;color:var(--sub);margin:2px 2px 8px;text-transform:uppercase}
-  .shop button{display:flex;justify-content:space-between;align-items:center;width:100%;margin-bottom:6px;text-align:left}
-  .shop .cost{color:var(--accent);font-size:12px}
+  .shop button{display:flex;justify-content:space-between;align-items:center;width:100%;margin-bottom:6px;text-align:left}.shop .cost{color:var(--accent);font-size:12px}
+  #facBar{margin-top:8px;display:none}
   #chip{width:100%;height:auto;display:block;background:#13101c;border:1px solid var(--line);border-radius:10px;margin-bottom:8px;touch-action:manipulation}
   #chip rect,#chip circle{cursor:pointer}
   #inspector{margin-bottom:6px}
@@ -44,16 +35,14 @@
   #dbg{position:fixed;left:6px;bottom:6px;font:11px/1.4 monospace;color:#7fe;background:#000a;padding:4px 7px;border-radius:6px;pointer-events:none;white-space:pre;display:none;z-index:50}
   .toast{position:fixed;left:50%;top:14px;transform:translateX(-50%);background:var(--good);color:#06210f;padding:7px 16px;border-radius:999px;font-size:13px;font-weight:700;z-index:80;opacity:0;transition:opacity .25s;pointer-events:none;max-width:90%;text-align:center}
   .modal{position:fixed;inset:0;background:#0b0910ee;display:flex;align-items:center;justify-content:center;z-index:100;padding:18px}
-  .modal .box{background:var(--panel);border:1px solid var(--line);border-radius:14px;max-width:440px;padding:20px}
-  .modal h2{margin:0 0 6px;color:var(--accent);font-size:17px;letter-spacing:.08em}
-  .modal p{font-size:13px;line-height:1.7;margin:8px 0}
-  .modal .k{color:var(--accent);font-weight:700}
+  .modal .box{background:var(--panel);border:1px solid var(--line);border-radius:14px;max-width:448px;padding:20px}
+  .modal h2{margin:0 0 6px;color:var(--accent);font-size:17px;letter-spacing:.08em}.modal p{font-size:13px;line-height:1.7;margin:8px 0}.modal .k{color:var(--accent);font-weight:700}
 </style>
 </head>
 <body>
 <div id="app">
   <h1>HOMUNCULUS</h1>
-  <div class="tag">360°タワーディフェンス × ユニットAI — プロト v0.6（タイトル仮）</div>
+  <div class="tag">360°TD × 内部ベルト工場 — プロト v0.7（タイトル仮）</div>
   <div class="wrap">
     <div class="left">
       <div class="card">
@@ -66,31 +55,35 @@
           <span class="pill" id="phaseTxt">待機</span>
         </div>
         <canvas id="cv" width="560" height="460"></canvas>
+        <div id="facBar" class="row">
+          <button data-tool="belt" class="on">ベルト</button>
+          <button data-tool="extractor">抽出機</button>
+          <button data-tool="converter">変換器</button>
+          <button data-tool="assembler">組立機</button>
+          <button data-tool="erase">消去</button>
+          <button id="rotBtn">⟳ 向き →</button>
+        </div>
       </div>
       <div class="card">
         <div class="row" style="justify-content:space-between">
           <div class="row">
             <button id="play" class="primary">▶ 防衛開始</button>
+            <button id="viewBtn">⚙ 工場</button>
             <button id="reset">⟲ リセット</button>
           </div>
           <div class="row">
-            <button id="spd">速度 1x</button>
-            <button id="mute">♪ 音 ON</button>
-            <button id="dbgBtn">dbg</button>
+            <button id="spd">速度 1x</button><button id="mute">♪ 音 ON</button><button id="dbgBtn">dbg</button>
           </div>
         </div>
       </div>
     </div>
     <div class="right">
-      <div class="card shop">
-        <div class="sect">強化（資源で購入）</div>
-        <div id="shop"></div>
-      </div>
+      <div class="card shop"><div class="sect">強化（資源で購入）</div><div id="shop"></div></div>
       <div class="card">
         <div class="sect">戦闘ユニットのAI基板（タップで配置・配線）</div>
         <svg id="chip" viewBox="0 0 320 320"></svg>
         <div id="inspector"></div>
-        <div class="hint">EXA式：条件は○/✕で分岐、行動は実行後▶の配線先へ（未配線なら先頭へ）。対象は最も近い敵。</div>
+        <div class="hint">EXA式：条件は○/✕で分岐、行動は実行後▶の配線先へ。対象は最も近い敵。</div>
       </div>
     </div>
   </div>
@@ -100,18 +93,23 @@
 
 <div class="modal" id="intro">
   <div class="box">
-    <h2>HOMUNCULUS — 360°TD</h2>
-    <p>中央の<span class="k">コア</span>を、四方八方から迫る敵から守る。コアは<span class="k">ユニットを自動製造</span>して戦場へ転送、ユニットは君が組んだ<span class="k">AI</span>で自律戦闘する。</p>
-    <p>敵を倒すと<span class="k">素材</span>が落ち、<span class="k">回収ユニット</span>が拾って資源に。資源で製造数・速度・コア砲台などを<span class="k">強化</span>。</p>
-    <p>敵は弱い<span class="k">斥候</span>から、波ごとに強くなる。AIを直しながら全7波を耐えよう。</p>
+    <h2>HOMUNCULUS</h2>
+    <p>中央<span class="k">コア</span>を360°の敵から守る。コア内部の<span class="k">ベルト工場</span>でユニットを製造し、戦場へ転送して自律戦闘させる。</p>
+    <p>工場：<span class="k">エネルギー源→抽出機→ベルト→変換器→組立機</span>。組立機が完成させるたびに戦闘ユニットが出撃。ベルトや機械を足してラインを増やすほど戦力が増える。</p>
+    <p><span class="k">コアをタップ</span>で工場ビューへ。敵撃破の素材は回収ユニットが資源化、資源で強化。AIは右の基板で編集。</p>
     <button class="primary" id="startBtn" style="width:100%;margin-top:8px">アリーナへ</button>
   </div>
 </div>
 
 <script>
 "use strict";
-/* HOMUNCULUS v0.6 — 360° TD × unit AI */
+/* HOMUNCULUS v0.7 — 360° TD × 内部ベルト工場 */
 const W=560,H=460,CX=280,CY=230,TPS=30;
+// 工場グリッド
+const FCOLS=12,FROWS=8,FT=40,OX=40,OY=70;
+const DIR=[[1,0],[0,1],[-1,0],[0,-1]], DIRC=['→','↓','←','↑'];
+const NEED=3, BELT_EVERY=5, BELT_PASS=2, FIELD_CAP_MAX=14;
+
 const ENEMY={
   weak:  {hp:30, speed:0.6, range:70, dmg:4, cd:28,color:'#ff9a6e',r:11,reward:1,name:'斥候'},
   normal:{hp:58, speed:0.9, range:92, dmg:6, cd:22,color:'#ff7046',r:13,reward:2,name:'兵'},
@@ -120,15 +118,10 @@ const ENEMY={
   boss:  {hp:520,speed:0.5, range:120,dmg:16,cd:24,color:'#d04ad0',r:24,reward:18,name:'指揮官'},
 };
 const WAVES=[
-  {name:'斥候',     list:[['weak',6]]},
-  {name:'威力偵察', list:[['weak',9]]},
-  {name:'本隊',     list:[['normal',7]]},
-  {name:'快速隊',   list:[['normal',6],['fast',4]]},
-  {name:'重装隊',   list:[['normal',8],['tank',3]]},
-  {name:'総攻撃',   list:[['normal',10],['fast',5],['tank',3]]},
-  {name:'指揮官',   list:[['normal',8],['tank',2],['boss',2]]},
+  {name:'斥候',list:[['weak',6]]},{name:'威力偵察',list:[['weak',9]]},{name:'本隊',list:[['normal',7]]},
+  {name:'快速隊',list:[['normal',6],['fast',4]]},{name:'重装隊',list:[['normal',8],['tank',3]]},
+  {name:'総攻撃',list:[['normal',10],['fast',5],['tank',3]]},{name:'指揮官',list:[['normal',8],['tank',2],['boss',2]]},
 ];
-
 const ACT_OPS=[{k:'approach',l:'敵に接近'},{k:'retreat',l:'敵から後退'},{k:'shoot',l:'撃つ'},{k:'idle',l:'待機'}];
 const COND_OPS=[{k:'inRange',l:'敵が射程内？'},{k:'lowHP',l:'自分のHPが低い？'},{k:'enemyNear',l:'敵が近い？'},{k:'always',l:'常に'}];
 
@@ -136,151 +129,177 @@ let S=null, selectedCell=null, wiringFrom=null, running=false, speed=1;
 
 function emptyCell(){return {kind:'empty',op:'',out:[-1,-1]};}
 function fighterChip(){return {start:0,cells:[
-  {kind:'cond',op:'inRange',out:[1,2]},
-  {kind:'act',op:'shoot',out:[0,-1]},
-  {kind:'act',op:'approach',out:[0,-1]},
+  {kind:'cond',op:'inRange',out:[1,2]},{kind:'act',op:'shoot',out:[0,-1]},{kind:'act',op:'approach',out:[0,-1]},
   emptyCell(),emptyCell(),emptyCell(),emptyCell(),emptyCell(),emptyCell(),
 ]};}
-function collectorChip(){return {start:0,cells:[
-  {kind:'cond',op:'always',out:[1,2]},  // ダミー（回収は専用ロジック）
-]};}
-
 function mkUnit(o){return Object.assign({id:S?S.nid++:0,hp:o.maxHp,reload:0,alive:true,carry:null,flash:0,pc:0},o);}
-function freshState(){
-  const st={nid:1,bots:[],mats:[],beams:[],tick:0,res:0,wave:0,phase:'ready',result:'',
-    core:{x:CX,y:CY,hp:220,maxHp:220,shield:50,maxShield:50,r:24,reload:0,turRange:108,turDmg:5,turCd:24,hitCd:0},
-    fighterCap:2,fighterInt:82,fighterT:0, collectorCap:1,collectorInt:120,collectorT:0,
-    toSpawn:[],spawnT:0,gapT:90,
-    fighterChip:fighterChip(), collectorChip:collectorChip()};
-  return st;
+
+function makeFactory(){
+  const g=[];for(let r=0;r<FROWS;r++){const row=[];for(let c=0;c<FCOLS;c++)row.push({t:'',dir:0,item:null,cnt:0,proc:false,tm:0,pt:0});g.push(row);}
+  function set(c,r,t,dir){g[r][c].t=t;g[r][c].dir=dir||0;}
+  // 初期ライン（row 4）
+  set(1,4,'e'); set(2,4,'x',0);
+  set(3,4,'b',0);set(4,4,'b',0);set(5,4,'b',0);
+  set(6,4,'c',0);
+  set(7,4,'b',0);set(8,4,'b',0);set(9,4,'b',0);
+  set(10,4,'a');
+  return {grid:g,sel:'belt',dir:0,extractInt:24,convTime:34,cap:6,bt:0};
 }
-function loadWave(st,i){ const w=WAVES[i]; const q=[]; w.list.forEach(([t,n])=>{for(let k=0;k<n;k++)q.push(t);});
-  // シャッフル
-  for(let j=q.length-1;j>0;j--){const r=Math.floor(Math.random()*(j+1));[q[j],q[r]]=[q[r],q[j]];}
-  st.toSpawn=q; st.spawnT=12; }
+function freshState(){
+  return {nid:1,bots:[],mats:[],beams:[],tick:0,res:0,wave:0,phase:'ready',result:'',view:'field',
+    core:{x:CX,y:CY,hp:220,maxHp:220,shield:50,maxShield:50,r:24,reload:0,turRange:108,turDmg:5,turCd:24,hitCd:0},
+    collectorCap:1,collectorInt:120,collectorT:0,
+    toSpawn:[],spawnT:0,gapT:90, fac:makeFactory(), fighterChip:fighterChip()};
+}
+function loadWave(st,i){const w=WAVES[i],q=[];w.list.forEach(([t,n])=>{for(let k=0;k<n;k++)q.push(t);});
+  for(let j=q.length-1;j>0;j--){const r=Math.floor(Math.random()*(j+1));[q[j],q[r]]=[q[r],q[j]];}st.toSpawn=q;st.spawnT=12;}
 
 function dist(a,b){return Math.hypot(a.x-b.x,a.y-b.y);}
-function nearestEnemy(b){let best=null,bd=1e9;for(const o of S.bots){if(!o.alive||o.team!=='enemy')continue;const d=dist(b,o);if(d<bd){bd=d;best=o;}}return best;}
-function nearestAlly(b){let best=null,bd=1e9;for(const o of S.bots){if(!o.alive||o.team==='enemy')continue;const d=dist(b,o);if(d<bd){bd=d;best=o;}}return best;}
-function nearestMat(b){let best=null,bd=1e9;for(const m of S.mats){const d=Math.hypot(b.x-m.x,b.y-m.y);if(d<bd){bd=d;best=m;}}return best;}
+function nearestEnemy(b){let z=null,bd=1e9;for(const o of S.bots){if(!o.alive||o.team!=='enemy')continue;const d=dist(b,o);if(d<bd){bd=d;z=o;}}return z;}
+function nearestAlly(b){let z=null,bd=1e9;for(const o of S.bots){if(!o.alive||o.team==='enemy')continue;const d=dist(b,o);if(d<bd){bd=d;z=o;}}return z;}
+function nearestMat(b){let z=null,bd=1e9;for(const m of S.mats){const d=Math.hypot(b.x-m.x,b.y-m.y);if(d<bd){bd=d;z=m;}}return z;}
 function clampField(b){b.x=Math.max(b.r,Math.min(W-b.r,b.x));b.y=Math.max(b.r,Math.min(H-b.r,b.y));}
 function moveTo(b,tx,ty,sp){const dx=tx-b.x,dy=ty-b.y,d=Math.hypot(dx,dy)||1;b.x+=dx/d*sp;b.y+=dy/d*sp;}
 function beam(a,t,c){S.beams.push({x1:a.x,y1:a.y,x2:t.x,y2:t.y,life:5,col:c});}
+function fieldFighters(){return S.bots.filter(b=>b.team==='ally'&&b.type==='fighter'&&b.alive).length;}
 
-// ---- 戦闘ユニットAI（EXA） ----
+// ---- 戦場AI ----
 function evalCond(b,op){const e=nearestEnemy(b),d=e?dist(b,e):1e9;
-  if(op==='inRange')return !!e&&d<=b.range; if(op==='lowHP')return b.hp<b.maxHp*0.3;
-  if(op==='enemyNear')return !!e&&d<=b.range*0.6; if(op==='always')return true; return false;}
-function fighterAct(b,op){const e=nearestEnemy(b); if(op==='idle'||!e)return; const d=dist(b,e);
+  if(op==='inRange')return !!e&&d<=b.range;if(op==='lowHP')return b.hp<b.maxHp*0.3;
+  if(op==='enemyNear')return !!e&&d<=b.range*0.6;if(op==='always')return true;return false;}
+function fighterAct(b,op){const e=nearestEnemy(b);if(op==='idle'||!e)return;const d=dist(b,e);
   if(op==='approach'){if(d>b.range*0.85){moveTo(b,e.x,e.y,b.speed);clampField(b);}}
   else if(op==='retreat'){moveTo(b,2*b.x-e.x,2*b.y-e.y,b.speed);clampField(b);}
   else if(op==='shoot'){if(d<=b.range&&b.reload<=0){e.hp-=b.dmg;b.reload=b.cd;b.flash=4;beam(b,e,b.color);}}}
 function tickFighter(b){let g=0,pc=b.pc,ch=S.fighterChip;
-  while(g++<20){const c=ch.cells[pc]; if(!c||c.kind==='empty'){b.pc=ch.start;return;}
-    if(c.kind==='cond'){const n=evalCond(b,c.op)?c.out[0]:c.out[1]; if(n==null||n<0){b.pc=ch.start;return;} pc=n; continue;}
-    fighterAct(b,c.op); const n=c.out[0]; b.pc=(n!=null&&n>=0)?n:ch.start; return;}
-  b.pc=ch.start;}
-// ---- 回収ユニット（専用） ----
-function tickCollector(b){
-  if(b.carry){ // 基地へ
-    if(dist(b,S.core)<S.core.r+8){const v=b.carry.reward||1;S.res+=v;b.carry=null;}
-    else moveTo(b,S.core.x,S.core.y,b.speed);
-  }else{ const m=nearestMat(b); if(!m)return;
-    if(Math.hypot(b.x-m.x,b.y-m.y)<12){b.carry=m;S.mats=S.mats.filter(x=>x!==m);}
-    else moveTo(b,m.x,m.y,b.speed);}
-}
-// ---- 敵 ----
-function tickEnemy(b){const a=nearestAlly(b); const dc=dist(b,S.core);
+  while(g++<20){const c=ch.cells[pc];if(!c||c.kind==='empty'){b.pc=ch.start;return;}
+    if(c.kind==='cond'){const n=evalCond(b,c.op)?c.out[0]:c.out[1];if(n==null||n<0){b.pc=ch.start;return;}pc=n;continue;}
+    fighterAct(b,c.op);const n=c.out[0];b.pc=(n!=null&&n>=0)?n:ch.start;return;}b.pc=ch.start;}
+function tickCollector(b){if(b.carry){if(dist(b,S.core)<S.core.r+8){S.res+=b.carry.reward||1;b.carry=null;}else moveTo(b,S.core.x,S.core.y,b.speed);}
+  else{const m=nearestMat(b);if(!m)return;if(Math.hypot(b.x-m.x,b.y-m.y)<12){b.carry=m;S.mats=S.mats.filter(x=>x!==m);}else moveTo(b,m.x,m.y,b.speed);}}
+function tickEnemy(b){const a=nearestAlly(b),dc=dist(b,S.core);
   if(a&&dist(b,a)<=b.range&&b.reload<=0){a.hp-=b.dmg;b.reload=b.cd;b.flash=4;beam(b,a,b.color);return;}
   if(dc<=b.range&&b.reload<=0){if(S.core.shield>0)S.core.shield=Math.max(0,S.core.shield-b.dmg);else S.core.hp-=b.dmg;S.core.hitCd=90;b.reload=b.cd;b.flash=4;beam(b,S.core,b.color);return;}
   moveTo(b,S.core.x,S.core.y,b.speed);}
-// ---- コア砲台 ----
-function tickCore(){const c=S.core; if(c.reload>0)c.reload--; if(c.hitCd>0)c.hitCd--;
+function tickCore(){const c=S.core;if(c.reload>0)c.reload--;if(c.hitCd>0)c.hitCd--;
   if(c.hitCd<=0&&c.shield<c.maxShield)c.shield=Math.min(c.maxShield,c.shield+0.18);
-  let best=null,bd=1e9; for(const o of S.bots){if(o.alive&&o.team==='enemy'){const d=dist(c,o);if(d<bd){bd=d;best=o;}}}
-  if(best&&bd<=c.turRange&&c.reload<=0){best.hp-=c.turDmg;c.reload=c.turCd;beam(c,best,'#aef0fa');}}
-
-function spawnEnemy(t){const e=ENEMY[t]; const ang=Math.random()*Math.PI*2; let x=CX+Math.cos(ang)*250,y=CY+Math.sin(ang)*250;
+  let z=null,bd=1e9;for(const o of S.bots){if(o.alive&&o.team==='enemy'){const d=dist(c,o);if(d<bd){bd=d;z=o;}}}
+  if(z&&bd<=c.turRange&&c.reload<=0){z.hp-=c.turDmg;c.reload=c.turCd;beam(c,z,'#aef0fa');}}
+function spawnEnemy(t){const e=ENEMY[t],a=Math.random()*6.283;let x=CX+Math.cos(a)*250,y=CY+Math.sin(a)*250;
   x=Math.max(e.r,Math.min(W-e.r,x));y=Math.max(e.r,Math.min(H-e.r,y));
   S.bots.push(mkUnit({team:'enemy',type:t,x,y,maxHp:e.hp,speed:e.speed,range:e.range,dmg:e.dmg,cd:e.cd,color:e.color,r:e.r,reward:e.reward}));}
-function spawnFighter(){const a=Math.random()*6.28;
+function spawnFighter(){const a=Math.random()*6.283;
   S.bots.push(mkUnit({team:'ally',type:'fighter',x:CX+Math.cos(a)*30,y:CY+Math.sin(a)*30,maxHp:60,speed:1.7,range:120,dmg:7,cd:16,color:'#34d6e6',r:13}));}
-function spawnCollector(){const a=Math.random()*6.28;
+function spawnCollector(){const a=Math.random()*6.283;
   S.bots.push(mkUnit({team:'ally',type:'collector',x:CX+Math.cos(a)*26,y:CY+Math.sin(a)*26,maxHp:40,speed:2.0,range:0,dmg:0,cd:0,color:'#6fd88a',r:11}));}
+
+// ---- 工場シム ----
+function inF(c,r){return c>=0&&r>=0&&c<FCOLS&&r<FROWS;}
+function stepFactory(){const F=S.fac,g=F.grid;
+  for(let r=0;r<FROWS;r++)for(let c=0;c<FCOLS;c++){const cell=g[r][c];
+    if(cell.t==='x'){cell.tm++;if(cell.tm>=F.extractInt){const[dx,dy]=DIR[cell.dir],nr=r+dy,nc=c+dx;if(inF(nc,nr)){const t=g[nr][nc];if(t.t==='b'&&!t.item){t.item={k:'E'};cell.tm=0;}}}}
+    else if(cell.t==='c'){
+      if(cell.proc){cell.pt++;if(cell.pt>=F.convTime){const[dx,dy]=DIR[cell.dir],nr=r+dy,nc=c+dx;if(inF(nc,nr)){const t=g[nr][nc];if(t.t==='b'&&!t.item){t.item={k:'P'};cell.proc=false;}else if(t.t==='a'){t.cnt++;cell.proc=false;}}}}
+      else if(cell.item&&cell.item.k==='E'){cell.proc=true;cell.pt=0;cell.item=null;}
+    }
+    else if(cell.t==='a'){if(cell.cnt>=NEED){if(fieldFighters()<F.cap){spawnFighter();cell.cnt-=NEED;}}}
+  }
+  F.bt++;if(F.bt>=BELT_EVERY){F.bt=0;
+    for(let p=0;p<BELT_PASS;p++)for(let r=0;r<FROWS;r++)for(let c=0;c<FCOLS;c++){const cell=g[r][c];
+      if(cell.t==='b'&&cell.item){const[dx,dy]=DIR[cell.dir],nr=r+dy,nc=c+dx;if(!inF(nc,nr))continue;const t=g[nr][nc];
+        if(t.t==='b'&&!t.item){t.item=cell.item;cell.item=null;}
+        else if(t.t==='c'&&!t.item&&!t.proc&&cell.item.k==='E'){t.item=cell.item;cell.item=null;}
+        else if(t.t==='a'&&cell.item.k==='P'){t.cnt++;cell.item=null;}}}
+  }
+}
 
 function stepSim(){
   if(S.phase!=='playing')return;
   const c=S.core;
-  for(const b of S.bots) if(b.alive&&b.reload>0)b.reload--;
-  // 製造
-  if(S.bots.filter(b=>b.team==='ally'&&b.type==='fighter'&&b.alive).length<S.fighterCap){if(++S.fighterT>=S.fighterInt){S.fighterT=0;spawnFighter();}}
+  for(const b of S.bots)if(b.alive&&b.reload>0)b.reload--;
+  stepFactory();
   if(S.bots.filter(b=>b.team==='ally'&&b.type==='collector'&&b.alive).length<S.collectorCap){if(++S.collectorT>=S.collectorInt){S.collectorT=0;spawnCollector();}}
-  // 波スポーン
-  if(S.toSpawn.length){ if(--S.spawnT<=0){spawnEnemy(S.toSpawn.shift());S.spawnT=15;} }
-  // 行動
-  for(const b of S.bots){ if(!b.alive)continue;
-    if(b.team==='enemy')tickEnemy(b); else if(b.type==='collector')tickCollector(b); else tickFighter(b); }
+  if(S.toSpawn.length){if(--S.spawnT<=0){spawnEnemy(S.toSpawn.shift());S.spawnT=15;}}
+  for(const b of S.bots){if(!b.alive)continue;if(b.team==='enemy')tickEnemy(b);else if(b.type==='collector')tickCollector(b);else tickFighter(b);}
   tickCore();
-  // 死亡＆ドロップ
-  for(const b of S.bots){ if(b.alive&&b.hp<=0){b.alive=false; if(b.team==='enemy')S.mats.push({x:b.x,y:b.y,reward:b.reward});} }
+  for(const b of S.bots){if(b.alive&&b.hp<=0){b.alive=false;if(b.team==='enemy')S.mats.push({x:b.x,y:b.y,reward:b.reward});}}
   S.bots=S.bots.filter(b=>b.alive);
-  for(const s of S.beams)s.life--; S.beams=S.beams.filter(s=>s.life>0);
+  for(const s of S.beams)s.life--;S.beams=S.beams.filter(s=>s.life>0);
   S.tick++;
-  // 波進行
-  const enemies=S.bots.filter(b=>b.team==='enemy').length;
-  if(S.toSpawn.length===0&&enemies===0){
-    if(S.wave<WAVES.length-1){ if(--S.gapT<=0){ S.wave++; loadWave(S,S.wave); S.gapT=120; updateHUD(); showToast('WAVE '+(S.wave+1)+' — '+WAVES[S.wave].name); } }
-    else { S.phase='over'; S.result='win'; onOver(); }
-  }
+  const en=S.bots.filter(b=>b.team==='enemy').length;
+  if(S.toSpawn.length===0&&en===0){
+    if(S.wave<WAVES.length-1){if(--S.gapT<=0){S.wave++;loadWave(S,S.wave);S.gapT=120;updateHUD();showToast('WAVE '+(S.wave+1)+' — '+WAVES[S.wave].name);}}
+    else{S.phase='over';S.result='win';onOver();}}
   if(c.hp<=0){S.phase='over';S.result='lose';onOver();}
 }
 
 // ====== 描画 ======
 const cv=document.getElementById('cv'),ctx=cv.getContext('2d');
-function rrect(x,y,w,h,r){ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath();}
-function draw(){
-  const g=ctx.createRadialGradient(CX,CY,30,CX,CY,330); g.addColorStop(0,'#11151e');g.addColorStop(1,'#070a10');
+function draw(){ if(S.view==='factory')drawFactory(); else drawField(); }
+function drawField(){
+  const g=ctx.createRadialGradient(CX,CY,30,CX,CY,330);g.addColorStop(0,'#11151e');g.addColorStop(1,'#070a10');
   ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
   ctx.strokeStyle='rgba(130,150,190,0.05)';ctx.lineWidth=1;
   for(let x=30;x<W;x+=30){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke();}
   for(let y=30;y<H;y+=30){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}
-  // beams
   for(const s of S.beams){ctx.save();ctx.globalAlpha=Math.min(1,s.life/5);ctx.shadowColor=s.col;ctx.shadowBlur=9;ctx.strokeStyle=s.col;ctx.lineWidth=2.4;ctx.lineCap='round';ctx.beginPath();ctx.moveTo(s.x1,s.y1);ctx.lineTo(s.x2,s.y2);ctx.stroke();ctx.restore();}
   ctx.lineCap='butt';
-  // mats
   for(const m of S.mats){ctx.fillStyle='#e8c24a';ctx.strokeStyle='#7a651f';ctx.lineWidth=1;ctx.save();ctx.translate(m.x,m.y);ctx.rotate(0.785);ctx.fillRect(-5,-5,10,10);ctx.strokeRect(-5,-5,10,10);ctx.restore();}
-  // core
   drawCore();
-  // bots
-  for(const b of S.bots) drawBot(b);
-  if(S.phase==='over'){ctx.fillStyle='rgba(7,10,16,0.72)';ctx.fillRect(0,H/2-30,W,60);
-    ctx.fillStyle=S.result==='win'?'#5fd08a':'#e0617a';ctx.font='bold 27px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';
-    ctx.fillText(S.result==='win'?'DEFENDED — 全波撃退！':'CORE DOWN — 陥落',W/2,H/2);ctx.textBaseline='alphabetic';}
+  for(const b of S.bots)drawBot(b);
+  // コアに「工場へ」ヒント
+  ctx.fillStyle='rgba(201,162,74,0.8)';ctx.font='9px sans-serif';ctx.textAlign='center';ctx.fillText('タップで工場',CX,CY+S.core.r+22);
+  if(S.phase==='over')overlay();
 }
-function drawCore(){const c=S.core;
-  ctx.save();ctx.shadowColor='#34d6e6';ctx.shadowBlur=14;
+function overlay(){ctx.fillStyle='rgba(7,10,16,0.72)';ctx.fillRect(0,H/2-30,W,60);ctx.fillStyle=S.result==='win'?'#5fd08a':'#e0617a';ctx.font='bold 27px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(S.result==='win'?'DEFENDED — 全波撃退！':'CORE DOWN — 陥落',W/2,H/2);ctx.textBaseline='alphabetic';}
+function drawCore(){const c=S.core;ctx.save();ctx.shadowColor='#34d6e6';ctx.shadowBlur=14;
   ctx.fillStyle='#0e2730';ctx.beginPath();for(let i=0;i<6;i++){const a=Math.PI/3*i-Math.PI/2;const x=c.x+Math.cos(a)*c.r,y=c.y+Math.sin(a)*c.r;i?ctx.lineTo(x,y):ctx.moveTo(x,y);}ctx.closePath();ctx.fill();
   ctx.strokeStyle='#34d6e6';ctx.lineWidth=2.5;ctx.stroke();ctx.restore();
   ctx.fillStyle='#34d6e6';ctx.beginPath();ctx.arc(c.x,c.y,5,0,7);ctx.fill();
-  // shield ring
   if(c.shield>0){ctx.strokeStyle='rgba(174,240,250,0.5)';ctx.lineWidth=2;ctx.beginPath();ctx.arc(c.x,c.y,c.r+12,-Math.PI/2,-Math.PI/2+(c.shield/c.maxShield)*6.283);ctx.stroke();}
-  // hp ring
   ctx.strokeStyle='rgba(255,255,255,0.1)';ctx.lineWidth=4;ctx.beginPath();ctx.arc(c.x,c.y,c.r+5,0,7);ctx.stroke();
-  ctx.strokeStyle='#34d6e6';ctx.lineWidth=4;ctx.beginPath();ctx.arc(c.x,c.y,c.r+5,-Math.PI/2,-Math.PI/2+Math.max(0,c.hp)/c.maxHp*6.283);ctx.stroke();
-}
-function drawBot(b){
-  const e=b.team==='enemy'?nearestAlly(b):(b.type==='collector'?null:nearestEnemy(b));
+  ctx.strokeStyle='#34d6e6';ctx.lineWidth=4;ctx.beginPath();ctx.arc(c.x,c.y,c.r+5,-Math.PI/2,-Math.PI/2+Math.max(0,c.hp)/c.maxHp*6.283);ctx.stroke();}
+function drawBot(b){const e=b.team==='enemy'?nearestAlly(b):(b.type==='collector'?null:nearestEnemy(b));
   const ang=e?Math.atan2(e.y-b.y,e.x-b.x):Math.atan2(CY-b.y,CX-b.x);
-  ctx.save();ctx.shadowColor=b.color;ctx.shadowBlur=b.flash>0?16:9;
-  ctx.fillStyle=b.color;ctx.beginPath();ctx.arc(b.x,b.y,b.r,0,7);ctx.fill();ctx.restore();
+  ctx.save();ctx.shadowColor=b.color;ctx.shadowBlur=b.flash>0?16:9;ctx.fillStyle=b.color;ctx.beginPath();ctx.arc(b.x,b.y,b.r,0,7);ctx.fill();ctx.restore();
   ctx.fillStyle='#0a0d14';ctx.beginPath();ctx.arc(b.x,b.y,b.r-3.5,0,7);ctx.fill();
   if(b.type!=='collector'){ctx.strokeStyle=b.color;ctx.lineWidth=3.5;ctx.lineCap='round';ctx.beginPath();ctx.moveTo(b.x,b.y);ctx.lineTo(b.x+Math.cos(ang)*(b.r+4),b.y+Math.sin(ang)*(b.r+4));ctx.stroke();ctx.lineCap='butt';}
-  ctx.fillStyle=b.color;ctx.beginPath();ctx.arc(b.x,b.y,2.6,0,7);ctx.fill();
-  if(b.flash>0)b.flash--;
+  ctx.fillStyle=b.color;ctx.beginPath();ctx.arc(b.x,b.y,2.6,0,7);ctx.fill();if(b.flash>0)b.flash--;
   if(b.carry){ctx.fillStyle='#e8c24a';ctx.save();ctx.translate(b.x,b.y-b.r-7);ctx.rotate(0.785);ctx.fillRect(-5,-5,10,10);ctx.restore();}
-  const frac=Math.max(0,b.hp)/b.maxHp;
-  ctx.strokeStyle='rgba(255,255,255,0.1)';ctx.lineWidth=2.5;ctx.beginPath();ctx.arc(b.x,b.y,b.r+3.5,0,7);ctx.stroke();
-  ctx.strokeStyle=b.color;ctx.lineWidth=2.5;ctx.beginPath();ctx.arc(b.x,b.y,b.r+3.5,-Math.PI/2,-Math.PI/2+frac*6.283);ctx.stroke();
+  const frac=Math.max(0,b.hp)/b.maxHp;ctx.strokeStyle='rgba(255,255,255,0.1)';ctx.lineWidth=2.5;ctx.beginPath();ctx.arc(b.x,b.y,b.r+3.5,0,7);ctx.stroke();
+  ctx.strokeStyle=b.color;ctx.lineWidth=2.5;ctx.beginPath();ctx.arc(b.x,b.y,b.r+3.5,-Math.PI/2,-Math.PI/2+frac*6.283);ctx.stroke();}
+
+function drawFactory(){
+  ctx.fillStyle='#0c0f17';ctx.fillRect(0,0,W,H);
+  ctx.fillStyle='#c9a24a';ctx.font='13px sans-serif';ctx.textAlign='left';ctx.fillText('CORE 内部 — 製造ライン',OX,40);
+  ctx.fillStyle='#8d86a8';ctx.font='10px sans-serif';ctx.fillText('エネルギー源→抽出機→ベルト→変換器→組立機。完成で戦場へ出撃',OX,56);
+  const F=S.fac,g=F.grid;
+  ctx.fillStyle='#0a0d15';ctx.fillRect(OX,OY,FCOLS*FT,FROWS*FT);
+  ctx.strokeStyle='#1a2030';ctx.lineWidth=1;
+  for(let c=0;c<=FCOLS;c++){ctx.beginPath();ctx.moveTo(OX+c*FT,OY);ctx.lineTo(OX+c*FT,OY+FROWS*FT);ctx.stroke();}
+  for(let r=0;r<=FROWS;r++){ctx.beginPath();ctx.moveTo(OX,OY+r*FT);ctx.lineTo(OX+FCOLS*FT,OY+r*FT);ctx.stroke();}
+  for(let r=0;r<FROWS;r++)for(let c=0;c<FCOLS;c++){const cell=g[r][c];if(!cell.t)continue;
+    const x=OX+c*FT,y=OY+r*FT,cx=x+FT/2,cy=y+FT/2;
+    if(cell.t==='b'){ctx.strokeStyle='#39435a';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(x+8,y+FT/2);ctx.lineTo(x+FT-8,y+FT/2);ctx.stroke();
+      ctx.fillStyle='#6b7790';ctx.font='12px sans-serif';ctx.textAlign='center';ctx.fillText(DIRC[cell.dir],cx,cy+4);
+      if(cell.item){ctx.fillStyle=cell.item.k==='E'?'#ffe27a':'#cfd6df';ctx.beginPath();ctx.arc(cx,cy,5,0,7);ctx.fill();}}
+    else{let col='#2a3346',lab='';
+      if(cell.t==='e'){col='#3a3417';lab='源';ctx.save();ctx.shadowColor='#ffe27a';ctx.shadowBlur=10;}
+      else if(cell.t==='x'){col='#33301a';lab='抽出'+DIRC[cell.dir];}
+      else if(cell.t==='c'){col='#12302a';lab='変換'+DIRC[cell.dir];}
+      else if(cell.t==='a'){col='#241f33';lab='組立';}
+      ctx.fillStyle=col;ctx.fillRect(x+3,y+3,FT-6,FT-6);
+      if(cell.t==='e'){ctx.fillStyle='#ffe27a';ctx.beginPath();ctx.arc(cx,cy-3,7,0,7);ctx.fill();ctx.restore();}
+      ctx.strokeStyle=cell.t==='c'?'#2f6a5e':(cell.t==='a'?'#7a5cc4':(cell.t==='x'?'#ffe27a':'#46546e'));ctx.lineWidth=1.5;ctx.strokeRect(x+3,y+3,FT-6,FT-6);
+      ctx.fillStyle='#cdc6df';ctx.font='9px sans-serif';ctx.textAlign='center';ctx.fillText(lab,cx,cy-2);
+      if(cell.t==='a'){ctx.fillStyle='#b9a9f0';ctx.fillText((cell.cnt||0)+'/'+NEED,cx,cy+11);}
+      if(cell.t==='c'&&cell.proc){ctx.fillStyle='#7fe0d8';ctx.fillRect(x+5,y+FT-9,(FT-10)*(cell.pt/F.convTime),3);}
+      if(cell.t==='c'&&cell.item){ctx.fillStyle='#ffe27a';ctx.beginPath();ctx.arc(cx,cy+10,4,0,7);ctx.fill();}
+    }
+  }
+  // 選択ツール表示
+  ctx.fillStyle='#8d86a8';ctx.font='10px sans-serif';ctx.textAlign='left';
+  ctx.fillText('選択: '+({belt:'ベルト',extractor:'抽出機',converter:'変換器',assembler:'組立機',erase:'消去'})[F.sel]+'  向き '+DIRC[F.dir]+'  ／ グリッドをタップで設置',OX,OY+FROWS*FT+22);
 }
 
 // ====== ループ ======
@@ -288,14 +307,15 @@ let lastT=0,acc=0,frames=0,fpsT=0,fps=0;
 function loop(t){requestAnimationFrame(loop);if(!lastT)lastT=t;const dt=(t-lastT)/1000;lastT=t;
   frames++;fpsT+=dt;if(fpsT>=0.5){fps=Math.round(frames/fpsT);frames=0;fpsT=0;}
   if(running&&S.phase==='playing'){acc+=dt;const iv=1/(TPS*speed);let g=0;while(acc>=iv&&g<40){acc-=iv;stepSim();g++;}}
-  draw(); $('resTxt').textContent=S.res; if(dbgOn)updateDbg();}
+  draw();$('resTxt').textContent=S.res;if(dbgOn)updateDbg();}
 
 // ====== UI ======
 const $=id=>document.getElementById(id);
 function updateHUD(){$('waveTxt').textContent=(S.wave+1)+' / '+WAVES.length;$('waveName').textContent=WAVES[S.wave].name;$('resTxt').textContent=S.res;buildShop();}
 function shopItems(){return [
-  {name:'戦闘ユニット上限 +1',cost:5+3*(S.fighterCap-3),can:()=>S.fighterCap<8,buy:()=>S.fighterCap++},
-  {name:'製造速度を上げる',cost:8,can:()=>S.fighterInt>24,buy:()=>S.fighterInt=Math.max(24,S.fighterInt-12)},
+  {name:'戦力上限 +1',cost:5+3*(S.fac.cap-6),can:()=>S.fac.cap<FIELD_CAP_MAX,buy:()=>S.fac.cap++},
+  {name:'抽出効率を上げる',cost:8,can:()=>S.fac.extractInt>8,buy:()=>S.fac.extractInt=Math.max(8,S.fac.extractInt-4)},
+  {name:'変換速度を上げる',cost:9,can:()=>S.fac.convTime>12,buy:()=>S.fac.convTime=Math.max(12,S.fac.convTime-5)},
   {name:'回収ユニット +1',cost:7+3*(S.collectorCap-1),can:()=>S.collectorCap<4,buy:()=>S.collectorCap++},
   {name:'コア砲台 強化',cost:10,can:()=>true,buy:()=>{S.core.turDmg+=3;S.core.turRange+=12;}},
   {name:'コア・シールド +40',cost:8,can:()=>true,buy:()=>{S.core.maxShield+=40;S.core.shield+=40;}},
@@ -304,65 +324,62 @@ function buildShop(){const box=$('shop');box.innerHTML='';shopItems().forEach(it
   const ok=S.res>=it.cost&&it.can();b.innerHTML=`<span>${it.name}</span><span class="cost">資源 ${it.cost}</span>`;b.disabled=!ok;
   b.onclick=()=>{if(S.res>=it.cost&&it.can()){S.res-=it.cost;it.buy();updateHUD();}};box.appendChild(b);});}
 
-// ---- AI基板エディタ（EXA・流用） ----
-const CELL_NAMES=['①','②','③','④','⑤','⑥','⑦','⑧','⑨'];
-const CW=96,CH=86,XS=[10,112,214],YS=[12,114,216];
-function box(i){return {x:XS[i%3],y:YS[(i/3|0)]};}
-function center(i){const b=box(i);return {x:b.x+CW/2,y:b.y+CH/2};}
-function portPos(i,which,cell){const b=box(i),by=b.y+CH; if(cell&&cell.kind==='act')return {x:b.x+CW/2,y:by}; return which==='a'?{x:b.x+CW*0.30,y:by}:{x:b.x+CW*0.70,y:by};}
-function opLabel(cell){if(cell.kind==='act')return (ACT_OPS.find(o=>o.k===cell.op)||{l:cell.op}).l; if(cell.kind==='cond')return (COND_OPS.find(o=>o.k===cell.op)||{l:cell.op}).l; return '空';}
+// ---- 工場ビュー操作 ----
+function setView(v){S.view=v;$('facBar').style.display=v==='factory'?'flex':'none';$('viewBtn').textContent=v==='factory'?'← 戦場':'⚙ 工場';$('viewBtn').classList.toggle('on',v==='factory');draw();}
+$('viewBtn').onclick=()=>setView(S.view==='factory'?'field':'factory');
+document.querySelectorAll('#facBar [data-tool]').forEach(btn=>{btn.onclick=()=>{S.fac.sel=btn.dataset.tool;document.querySelectorAll('#facBar [data-tool]').forEach(b=>b.classList.toggle('on',b===btn));draw();};});
+$('rotBtn').onclick=()=>{S.fac.dir=(S.fac.dir+1)%4;$('rotBtn').textContent='⟳ 向き '+DIRC[S.fac.dir];draw();};
+cv.addEventListener('click',e=>{const r=cv.getBoundingClientRect(),sx=cv.width/r.width,sy=cv.height/r.height;const x=(e.clientX-r.left)*sx,y=(e.clientY-r.top)*sy;
+  if(S.view==='field'){if(Math.hypot(x-CX,y-CY)<S.core.r+16)setView('factory');return;}
+  const c=Math.floor((x-OX)/FT),rr=Math.floor((y-OY)/FT);if(!inF(c,rr))return;const cell=S.fac.grid[rr][c];if(cell.t==='e')return;
+  if(S.fac.sel==='erase'){cell.t='';cell.item=null;cell.cnt=0;cell.proc=false;}
+  else{cell.t={belt:'b',extractor:'x',converter:'c',assembler:'a'}[S.fac.sel];cell.dir=S.fac.dir;cell.item=null;cell.cnt=0;cell.proc=false;cell.tm=0;cell.pt=0;}
+  draw();});
+
+// ---- AI基板（EXA） ----
+const CELL_NAMES=['①','②','③','④','⑤','⑥','⑦','⑧','⑨'],CW=96,CH=86,XS=[10,112,214],YS=[12,114,216];
+function bx(i){return {x:XS[i%3],y:YS[(i/3|0)]};}
+function ctr(i){const b=bx(i);return {x:b.x+CW/2,y:b.y+CH/2};}
+function pp(i,which,cell){const b=bx(i),by=b.y+CH;if(cell&&cell.kind==='act')return {x:b.x+CW/2,y:by};return which==='a'?{x:b.x+CW*0.30,y:by}:{x:b.x+CW*0.70,y:by};}
+function opLabel(cell){if(cell.kind==='act')return (ACT_OPS.find(o=>o.k===cell.op)||{l:cell.op}).l;if(cell.kind==='cond')return (COND_OPS.find(o=>o.k===cell.op)||{l:cell.op}).l;return '空';}
 function buildChip(){selectedCell=null;wiringFrom=null;$('chip').onclick=onChipClick;drawChip();buildInspector();}
-function wireArrow(a,b,col){const mx=(a.x+b.x)/2,my=(a.y+b.y)/2+18,dx=b.x-mx,dy=b.y-my,len=Math.hypot(dx,dy)||1,ux=dx/len,uy=dy/len,ex=b.x-ux*15,ey=b.y-uy*15,ah=7,px=-uy,py=ux;
+function wA(a,b,col){const mx=(a.x+b.x)/2,my=(a.y+b.y)/2+18,dx=b.x-mx,dy=b.y-my,len=Math.hypot(dx,dy)||1,ux=dx/len,uy=dy/len,ex=b.x-ux*15,ey=b.y-uy*15,ah=7,px=-uy,py=ux;
   return `<path d="M ${a.x} ${a.y} Q ${mx} ${my} ${ex} ${ey}" fill="none" stroke="${col}" stroke-width="2"/><polygon points="${ex},${ey} ${ex-ux*ah+px*ah*0.6},${ey-uy*ah+py*ah*0.6} ${ex-ux*ah-px*ah*0.6},${ey-uy*ah-py*ah*0.6}" fill="${col}"/>`;}
-function portCircle(i,which,cell,col,glyph){const p=portPos(i,which,cell),hot=wiringFrom&&wiringFrom.cell===i&&wiringFrom.which===which;
-  return `<circle data-port="${i}" data-which="${which}" cx="${p.x}" cy="${p.y}" r="${hot?11:9}" fill="${hot?col:'#15111e'}" stroke="${col}" stroke-width="2"/><text x="${p.x}" y="${p.y+4}" font-size="11" text-anchor="middle" fill="${hot?'#15111e':col}" pointer-events="none">${glyph}</text>`;}
+function pc(i,which,cell,col,gl){const p=pp(i,which,cell),hot=wiringFrom&&wiringFrom.cell===i&&wiringFrom.which===which;
+  return `<circle data-port="${i}" data-which="${which}" cx="${p.x}" cy="${p.y}" r="${hot?11:9}" fill="${hot?col:'#15111e'}" stroke="${col}" stroke-width="2"/><text x="${p.x}" y="${p.y+4}" font-size="11" text-anchor="middle" fill="${hot?'#15111e':col}" pointer-events="none">${gl}</text>`;}
 function drawChip(){const chip=S.fighterChip,svg=$('chip');let s='';
-  chip.cells.forEach((cell,i)=>{ if(cell.kind==='cond'){if(cell.out[0]>=0)s+=wireArrow(portPos(i,'a',cell),center(cell.out[0]),'#5fd08a');if(cell.out[1]>=0)s+=wireArrow(portPos(i,'b',cell),center(cell.out[1]),'#e0617a');}
-    else if(cell.kind==='act'){if(cell.out[0]>=0)s+=wireArrow(portPos(i,'a',cell),center(cell.out[0]),'#e6c46a');}});
-  chip.cells.forEach((cell,i)=>{const b=box(i),isS=chip.start===i,isSel=selectedCell===i;
-    const fill=cell.kind==='empty'?'#191622':(cell.kind==='cond'?'#142a2c':'#2c2516');const lc=cell.kind==='cond'?'#7fe0d8':(cell.kind==='act'?'#e6c46a':'#6b6480');
-    s+=`<rect data-cell="${i}" x="${b.x}" y="${b.y}" width="${CW}" height="${CH}" rx="12" fill="${fill}" stroke="${isS?'#c9a24a':(isSel?'#7a5cc4':'#3a3350')}" stroke-width="${isS||isSel?2.5:1}"/>`;
+  chip.cells.forEach((cell,i)=>{if(cell.kind==='cond'){if(cell.out[0]>=0)s+=wA(pp(i,'a',cell),ctr(cell.out[0]),'#5fd08a');if(cell.out[1]>=0)s+=wA(pp(i,'b',cell),ctr(cell.out[1]),'#e0617a');}else if(cell.kind==='act'){if(cell.out[0]>=0)s+=wA(pp(i,'a',cell),ctr(cell.out[0]),'#e6c46a');}});
+  chip.cells.forEach((cell,i)=>{const b=bx(i),iS=chip.start===i,iSel=selectedCell===i;const fill=cell.kind==='empty'?'#191622':(cell.kind==='cond'?'#142a2c':'#2c2516'),lc=cell.kind==='cond'?'#7fe0d8':(cell.kind==='act'?'#e6c46a':'#6b6480');
+    s+=`<rect data-cell="${i}" x="${b.x}" y="${b.y}" width="${CW}" height="${CH}" rx="12" fill="${fill}" stroke="${iS?'#c9a24a':(iSel?'#7a5cc4':'#3a3350')}" stroke-width="${iS||iSel?2.5:1}"/>`;
     if(cell.kind!=='empty')s+=`<text x="${b.x+CW-8}" y="${b.y+15}" font-size="8" text-anchor="end" fill="${lc}" opacity="0.8" pointer-events="none">${cell.kind==='cond'?'条件':'行動'}</text>`;
     s+=`<text x="${b.x+CW/2}" y="${b.y+18}" font-size="9" text-anchor="middle" fill="#a99fc4" pointer-events="none">${CELL_NAMES[i]}</text>`;
     s+=`<text x="${b.x+CW/2}" y="${b.y+CH/2+10}" font-size="11" text-anchor="middle" fill="${lc}" pointer-events="none">${cell.kind==='empty'?'空':opLabel(cell)}</text>`;
-    s+=`<circle data-start="${i}" cx="${b.x+14}" cy="${b.y+14}" r="9" fill="${isS?'#c9a24a':'#15111e'}" stroke="#c9a24a" stroke-width="1.5"/><text x="${b.x+14}" y="${b.y+18}" font-size="9" text-anchor="middle" fill="${isS?'#231a06':'#c9a24a'}" pointer-events="none">S</text>`;
-    if(cell.kind==='cond'){s+=portCircle(i,'a',cell,'#5fd08a','○');s+=portCircle(i,'b',cell,'#e0617a','✕');}else if(cell.kind==='act')s+=portCircle(i,'a',cell,'#e6c46a','▶');});
-  if(wiringFrom)s+=`<text x="160" y="9" font-size="10" text-anchor="middle" fill="#c9a24a">繋ぎ先のセルをタップ</text>`;
-  svg.innerHTML=s;}
-function onChipClick(e){const chip=S.fighterChip;
-  const port=e.target.closest&&e.target.closest('[data-port]');
+    s+=`<circle data-start="${i}" cx="${b.x+14}" cy="${b.y+14}" r="9" fill="${iS?'#c9a24a':'#15111e'}" stroke="#c9a24a" stroke-width="1.5"/><text x="${b.x+14}" y="${b.y+18}" font-size="9" text-anchor="middle" fill="${iS?'#231a06':'#c9a24a'}" pointer-events="none">S</text>`;
+    if(cell.kind==='cond'){s+=pc(i,'a',cell,'#5fd08a','○');s+=pc(i,'b',cell,'#e0617a','✕');}else if(cell.kind==='act')s+=pc(i,'a',cell,'#e6c46a','▶');});
+  if(wiringFrom)s+=`<text x="160" y="9" font-size="10" text-anchor="middle" fill="#c9a24a">繋ぎ先のセルをタップ</text>`;svg.innerHTML=s;}
+function onChipClick(e){const chip=S.fighterChip;const port=e.target.closest&&e.target.closest('[data-port]');
   if(port){const i=+port.dataset.port,w=port.dataset.which;wiringFrom=(wiringFrom&&wiringFrom.cell===i&&wiringFrom.which===w)?null:{cell:i,which:w};drawChip();return;}
-  const start=e.target.closest&&e.target.closest('[data-start]');
-  if(start){chip.start=+start.dataset.start;wiringFrom=null;drawChip();buildInspector();return;}
-  const cellEl=e.target.closest&&e.target.closest('[data-cell]');
-  if(cellEl){const i=+cellEl.dataset.cell; if(wiringFrom){const c=chip.cells[wiringFrom.cell];if(c.kind==='cond')c.out[wiringFrom.which==='a'?0:1]=i;else if(c.kind==='act')c.out[0]=i;wiringFrom=null;drawChip();return;} selectedCell=i;drawChip();buildInspector();return;}}
-function buildInspector(){const chip=S.fighterChip,boxEl=$('inspector');
-  if(selectedCell==null){boxEl.innerHTML='<div class="hint" style="margin-top:0">セルをタップして中身を選ぶ</div>';return;}
-  const i=selectedCell,cell=chip.cells[i];
-  let html=`<div class="insp"><div class="insprow"><b>セル${CELL_NAMES[i]}</b><button class="ib ${chip.start===i?'on':''}" data-ins="start">${chip.start===i?'開始セル':'開始にする'}</button></div><div class="insprow">`;
-  [['empty','空'],['act','行動'],['cond','条件']].forEach(([k,l])=>{html+=`<button class="ib ${cell.kind===k?'on':''}" data-ins="kind" data-k="${k}">${l}</button>`;});
-  html+=`</div>`;
+  const st=e.target.closest&&e.target.closest('[data-start]');if(st){chip.start=+st.dataset.start;wiringFrom=null;drawChip();buildInspector();return;}
+  const ce=e.target.closest&&e.target.closest('[data-cell]');if(ce){const i=+ce.dataset.cell;if(wiringFrom){const c=chip.cells[wiringFrom.cell];if(c.kind==='cond')c.out[wiringFrom.which==='a'?0:1]=i;else if(c.kind==='act')c.out[0]=i;wiringFrom=null;drawChip();return;}selectedCell=i;drawChip();buildInspector();return;}}
+function buildInspector(){const chip=S.fighterChip,boxEl=$('inspector');if(selectedCell==null){boxEl.innerHTML='<div class="hint" style="margin-top:0">セルをタップして中身を選ぶ</div>';return;}
+  const i=selectedCell,cell=chip.cells[i];let html=`<div class="insp"><div class="insprow"><b>セル${CELL_NAMES[i]}</b><button class="ib ${chip.start===i?'on':''}" data-ins="start">${chip.start===i?'開始セル':'開始にする'}</button></div><div class="insprow">`;
+  [['empty','空'],['act','行動'],['cond','条件']].forEach(([k,l])=>{html+=`<button class="ib ${cell.kind===k?'on':''}" data-ins="kind" data-k="${k}">${l}</button>`;});html+=`</div>`;
   if(cell.kind==='act'||cell.kind==='cond'){const ops=cell.kind==='act'?ACT_OPS:COND_OPS;html+=`<select id="opSel">`+ops.map(o=>`<option value="${o.k}" ${o.k===cell.op?'selected':''}>${o.l}</option>`).join('')+`</select>`;}
   html+=`</div>`;boxEl.innerHTML=html;
-  boxEl.querySelectorAll('[data-ins]').forEach(btn=>{btn.onclick=()=>{
-    if(btn.dataset.ins==='start')chip.start=i;
-    else if(btn.dataset.ins==='kind'){const k=btn.dataset.k;cell.kind=k;if(k==='act'){cell.op='approach';cell.out=[chip.start,-1];}else if(k==='cond'){cell.op='inRange';cell.out=[-1,-1];}else{cell.op='';cell.out=[-1,-1];}}
-    drawChip();buildInspector();};});
+  boxEl.querySelectorAll('[data-ins]').forEach(btn=>{btn.onclick=()=>{if(btn.dataset.ins==='start')chip.start=i;else if(btn.dataset.ins==='kind'){const k=btn.dataset.k;cell.kind=k;if(k==='act'){cell.op='approach';cell.out=[chip.start,-1];}else if(k==='cond'){cell.op='inRange';cell.out=[-1,-1];}else{cell.op='';cell.out=[-1,-1];}}drawChip();buildInspector();};});
   const opSel=boxEl.querySelector('#opSel');if(opSel)opSel.onchange=()=>{cell.op=opSel.value;drawChip();};}
 
 // ====== コントロール ======
 let toastT=null;function showToast(m){const el=$('toast');el.textContent=m;el.style.opacity='1';clearTimeout(toastT);toastT=setTimeout(()=>el.style.opacity='0',1800);}
-function onOver(){running=false;$('play').textContent='▶ もう一度';$('play').classList.remove('on');$('phaseTxt').textContent=S.result==='win'?'防衛成功':'陥落';
-  if(S.result==='win'){bell();showToast('全7波を撃退！防衛成功');}else showToast('コア陥落… 強化とAIを見直して再挑戦');}
+function onOver(){running=false;$('play').textContent='▶ もう一度';$('play').classList.remove('on');$('phaseTxt').textContent=S.result==='win'?'防衛成功':'陥落';if(S.result==='win'){bell();showToast('全7波を撃退！');}else showToast('コア陥落… 工場とAIを見直して再挑戦');}
 function startGame(){S.phase='playing';running=true;$('play').textContent='⏸ 一時停止';$('play').classList.add('on');$('phaseTxt').textContent='防衛中';ensureAudio();}
 $('play').onclick=()=>{if(S.phase==='ready'||S.phase==='over'){if(S.phase==='over')doReset();startGame();return;}running=!running;$('play').textContent=running?'⏸ 一時停止':'▶ 再開';$('play').classList.toggle('on',running);};
 $('reset').onclick=()=>{doReset();};
 $('spd').onclick=()=>{speed=speed===1?2:speed===2?4:1;$('spd').textContent='速度 '+speed+'x';};
 let dbgOn=false;$('dbgBtn').onclick=()=>{dbgOn=!dbgOn;$('dbg').style.display=dbgOn?'block':'none';$('dbgBtn').classList.toggle('on',dbgOn);};
-function updateDbg(){const al=S.bots.filter(b=>b.team!=='enemy').length,en=S.bots.filter(b=>b.team==='enemy').length;
-  $('dbg').textContent=`fps ${fps} tick ${S.tick} ${S.phase}\nwave ${S.wave+1} 残${S.toSpawn.length} 敵${en} 味方${al}\nコアHP ${S.core.hp|0} SH ${S.core.shield|0} 資源 ${S.res}`;}
-function doReset(){running=false;const fc=S?S.fighterChip:null;S=freshState();if(fc)S.fighterChip=fc;loadWave(S,0);
-  $('play').textContent='▶ 防衛開始';$('play').classList.remove('on');$('phaseTxt').textContent='待機';selectedCell=null;wiringFrom=null;updateHUD();buildChip();draw();}
+function updateDbg(){const al=fieldFighters(),en=S.bots.filter(b=>b.team==='enemy').length;$('dbg').textContent=`fps ${fps} tick ${S.tick} ${S.phase} view:${S.view}\nwave ${S.wave+1} 残${S.toSpawn.length} 敵${en} 戦闘${al}/${S.fac.cap}\nコアHP ${S.core.hp|0} SH ${S.core.shield|0} 資源 ${S.res}`;}
+function doReset(){running=false;const fc=S?S.fighterChip:null,fac=S?S.fac:null;S=freshState();if(fc)S.fighterChip=fc;if(fac)S.fac=fac;loadWave(S,0);
+  $('play').textContent='▶ 防衛開始';$('play').classList.remove('on');$('phaseTxt').textContent='待機';selectedCell=null;wiringFrom=null;setView('field');updateHUD();buildChip();draw();}
 
 // ====== Audio ======
 let actx=null,master=null,muted=false;
@@ -378,7 +395,6 @@ window.addEventListener('pagehide',()=>{if(actx)actx.suspend();});
 $('startBtn').onclick=()=>{$('intro').style.display='none';ensureAudio();$('mute').classList.add('on');};
 function boot(){S=freshState();loadWave(S,0);updateHUD();buildChip();draw();requestAnimationFrame(loop);}
 boot();
-
 if(typeof module!=='undefined'&&module.exports){module.exports={freshState,loadWave,stepSim,WAVES,setState:s=>{S=s;},getState:()=>S};}
 </script>
 </body>
