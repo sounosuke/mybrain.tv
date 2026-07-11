@@ -311,7 +311,7 @@ catch(e){ console.error("Firebase init 失敗:",e); }
 
 <script>
 "use strict";
-const GAME_VERSION="P3.13 (対戦中の音声チャット WebRTC)";
+const GAME_VERSION="P3.16 (音声チャット: Cloudflare TURN 有効化)";
 const KIFU_FMT=2; // 棋譜の記録フォーマット版(記録項目を増やしたら上げる。読込時に不一致なら警告)
 /* ============ カードデータ ============ */
 const CARDS={};
@@ -4187,26 +4187,36 @@ function showLobby(){
  OL.deck=null;
  olRenderDeckSelect();
 }
-/* 持ち込みデッキ選択 */
+/* 持ち込みデッキ選択: オフライン(deckSelectScreen)と同じ見た目・同じ選択肢(プリセット＋自作)。
+   各デッキの"顔"3枚アートも同じ署名カード選定ロジック・同じCSS(.deckArt/.dcard/.deckRow)を流用。 */
 function olRenderDeckSelect(){
  olCleanupListeners();
- const decks=loadCustomDecks();
- if(!decks||!decks.length){
+ const customs=loadCustomDecks();
+ // プリセット(DECKS: 公式/オリジナル)＋自作を統合。official!==false → 公式、碧天/赤単は official:false → オリジナル、自作は preset:false。
+ const all=[...DECKS.map(d=>({...d,official:d.official!==false,preset:true})),...customs.map(d=>({...d,official:false,preset:false}))];
+ if(!all.length){
   alert("オンライン対戦に持ち込むデッキがありません。デッキ管理で作成してください。");
   showDeckManager(); return;
  }
  const bd=olPanel(`<div style="width:100%;padding:6px 4px 12px">
     <div style="text-align:center;font-size:14px;margin-bottom:12px">持ち込むデッキを選択してください</div>
-    <div id="olDeckList" style="display:flex;flex-direction:column;gap:8px;max-width:420px;margin:0 auto"></div>
+    <div id="olDeckList" class="dsList" style="max-width:520px;margin:0 auto"></div>
     <div style="text-align:center;margin-top:14px"><button id="olDeckBack" style="font-size:13px;padding:10px 20px">← ホームに戻る</button></div>
    </div>`);
  const list=bd.querySelector("#olDeckList");
- decks.forEach(dk=>{
-  const b=document.createElement("button");
-  b.style.cssText="font-size:14px;padding:12px;text-align:left";
-  b.innerHTML=`<b>${escapeHTML(dk.name)}</b> <small style="color:var(--dim)">${escapeHTML(dk.colors||"")}</small>`;
-  b.onclick=()=>{ OL.deck={name:dk.name, list:dk.list, colors:dk.colors}; olRenderMenu(); };
-  list.appendChild(b);
+ all.forEach(dk=>{
+  const row=document.createElement("div");
+  row.className="deckRow";
+  row.style.cursor="pointer";
+  const tag=dk.preset?(dk.official?"／公式":"／オリジナル"):"／自作";
+  // 署名カード: オフライン deckSelectScreen と同一ロジック(ユニット優先→総コスト→パワー降順で上位3枚)
+  const rep=[...new Set((dk.list||[]).map(e=>typeof e==="number"?e:e.no))].filter(no=>CARDS[no])
+    .sort((a,b)=>((CARDS[b].type==="U")-(CARDS[a].type==="U"))||(totalCost(b)-totalCost(a))||((CARDS[b].pow||0)-(CARDS[a].pow||0)))
+    .slice(0,3);
+  const artHTML=`<div class="deckArt" aria-hidden="true">${rep.map(no=>`<div class="dcard" style="background-image:url('art/${no}.png')"></div>`).join("")}</div>`;
+  row.innerHTML=`${artHTML}<div class="deckInfo"><b>${escapeHTML(dk.name)}</b> <small style="color:var(--dim)">${escapeHTML(dk.colors||"")} ${tag}</small><br><small style="color:var(--dim)">${escapeHTML(dk.desc||"")}</small></div>`;
+  row.onclick=()=>{ OL.deck={name:dk.name, list:dk.list, colors:dk.colors}; olRenderMenu(); };
+  list.appendChild(row);
  });
  bd.querySelector("#olDeckBack").onclick=()=>showHome();
 }
@@ -4652,15 +4662,23 @@ function olClaimDisconnectWin(){
    - 音声機能の失敗(権限拒否/未対応/接続不可)は対戦本体(指し手同期・進行)に一切影響させない(全て try/catch で隔離)。
    ============================================================ */
 let RTC={ active:false, pc:null, localStream:null, remoteStream:null,
-  role:null, session:null, muted:false, remoteSet:false,
+  role:null, session:null, muted:false, remoteSet:false, usingTurn:false, diag:{},
   unsubs:[],                 // rtc用のonSnapshot購読(moves/presence/matchのunsubとは別管理・退出時に確実に解除)
   rtcCol:null, offerRef:null, answerRef:null, callerCandCol:null, calleeCandCol:null };
 const RTC_ICE={ iceServers:[
   {urls:"stun:stun.l.google.com:19302"},
   {urls:"stun:stun1.l.google.com:19302"},
   {urls:"stun:stun2.l.google.com:19302"}
-  // TURN未導入。厳しいNAT環境で接続できない場合はここに turn: を追加する(要TURNサーバ)。
 ]};
+/* ===== Cloudflare Realtime TURN 設定 =====================================
+   ★ここに、デプロイした Cloudflare Worker の URL を入れると TURN 中継が有効になる。
+     例: const TURN_ENDPOINT = "https://d0-turn.<あなた>.workers.dev";
+   ・空文字("")のままなら従来通り Google STUN のみで動作(後方互換)。
+   ・Worker は Cloudflare の generate-ice-servers API を叩き、短命の
+     iceServers(urls/username/credential) だけをクライアントへ返す(APIトークンは秘匿)。
+   ・スマホ↔PC が同一Wi-Fiでも繋がらない(ヘアピンNAT非対応)環境では TURN 中継が必須。
+   Workerコードは同フォルダの turn-worker.js を参照。 */
+const TURN_ENDPOINT = "https://d0-turn.sounosuke.workers.dev/";
 function rtcSupported(){
   return typeof RTCPeerConnection!=="undefined" && typeof RTCSessionDescription!=="undefined"
     && !!(navigator.mediaDevices && typeof navigator.mediaDevices.getUserMedia==="function");
@@ -4676,16 +4694,88 @@ function rtcInitUI(){
       bar.innerHTML=`<button id="rtcCallBtn" style="font-size:12px;padding:3px 10px">🎤 通話</button>`
         +`<button id="rtcMuteBtn" style="display:none;font-size:12px;padding:3px 8px" title="マイクのミュート切替">🎤</button>`
         +`<span id="rtcStat" style="color:#bcd;font-size:11px;min-width:48px;text-align:center">未接続</span>`
+        +`<button id="rtcDiagBtn" style="font-size:11px;padding:3px 6px" title="接続診断の表示切替">🔍</button>`
         +`<audio id="rtcAudio" autoplay playsinline style="display:none"></audio>`;
       (document.body||document.documentElement).appendChild(bar);
       const cb=$("rtcCallBtn"); if(cb)cb.onclick=rtcToggleCall;
       const mb=$("rtcMuteBtn"); if(mb)mb.onclick=rtcToggleMute;
+      // 接続診断パネル(既定は非表示。🔍で開閉。どの段階で止まったか報告できるように)
+      let dg=$("rtcDiag");
+      if(!dg){
+        dg=document.createElement("div"); dg.id="rtcDiag";
+        dg.style.cssText="position:fixed;top:80px;right:8px;z-index:61;display:none;max-width:240px;background:#0d1422;border:1px solid #3a4a6a;border-radius:10px;padding:6px 9px;font-size:10px;line-height:1.55;color:#bcd;box-shadow:0 2px 8px #0007";
+        (document.body||document.documentElement).appendChild(dg);
+      }
+      const db=$("rtcDiagBtn"); if(db)db.onclick=()=>{ const p=$("rtcDiag"); if(p)p.style.display=(p.style.display==="none"?"block":"none"); };
       if(!rtcSupported()){ const cb2=$("rtcCallBtn"); if(cb2)cb2.disabled=true; rtcSetStat("非対応"); }
     }
   }catch(e){ console.error("rtc UI生成失敗",e); }
 }
 function rtcSetStat(t){ const el=$("rtcStat"); if(el)el.textContent=t; }
-function rtcRemoveUI(){ const b=$("rtcBar"); if(b)b.remove(); }
+function rtcRemoveUI(){ const b=$("rtcBar"); if(b)b.remove(); const d=$("rtcDiag"); if(d)d.remove(); }
+/* --- 接続診断: 各段階の状態を診断パネルに可視化(#rtcDiag) --- */
+function rtcSetDiag(k,v){ try{ if(!RTC.diag)RTC.diag={}; RTC.diag[k]=v; rtcRenderDiag(); }catch(e){} }
+function rtcRenderDiag(){
+  const el=$("rtcDiag"); if(!el)return;
+  const d=RTC.diag||{};
+  const esc=s=>String(s==null?"":s).replace(/[<>&]/g,c=>({"<":"&lt;",">":"&gt;","&":"&amp;"}[c]));
+  const row=(label,v)=> v? `<div><span style="color:#8fd6a8">${label}:</span> ${esc(v)}</div>` : "";
+  el.innerHTML =
+    row("マイク",d.mic)+row("役割",d.role)+row("シグナル",d.signal)
+    +row("ICE",d.ice)+row("接続",d.conn)+row("TURN",d.turn)+row("経路",d.pair)
+    +(d.err?`<div style="color:#f88">エラー: ${esc(d.err)}</div>`:"");
+}
+/* --- ICEサーバ解決: TURN_ENDPOINT があれば Worker から短命認証情報を取得し
+       既存の Google STUN とマージ。失敗時は STUN のみにフォールバック(通話は止めない)。 */
+async function rtcResolveIce(){
+  const cfg={ iceServers: RTC_ICE.iceServers.slice() };  // 既定は STUN のみ
+  RTC.usingTurn=false;
+  if(!TURN_ENDPOINT){ rtcSetDiag("turn","未設定(STUNのみ)"); return cfg; }
+  try{
+    rtcSetDiag("turn","TURN取得中…");
+    const res=await fetch(TURN_ENDPOINT, {method:"GET", cache:"no-store"});
+    if(!res.ok) throw new Error("HTTP "+res.status);
+    const j=await res.json();
+    // Worker の返却形に幅を持たせて吸収: 配列 / {iceServers:[...]} / {iceServers:{...}}
+    let arr=null;
+    if(Array.isArray(j)) arr=j;
+    else if(j && Array.isArray(j.iceServers)) arr=j.iceServers;
+    else if(j && j.iceServers && typeof j.iceServers==="object") arr=[j.iceServers];
+    if(!arr||!arr.length) throw new Error("iceServers が空/不正");
+    // RTCConfiguration.iceServers 形式(配列)へ整形して STUN とマージ
+    cfg.iceServers = RTC_ICE.iceServers.concat(arr);
+    RTC.usingTurn = arr.some(s=>{ const u=s&&s.urls; const list=Array.isArray(u)?u:[u]; return list.some(x=>typeof x==="string"&&/^turns?:/i.test(x)); });
+    rtcSetDiag("turn", RTC.usingTurn?"取得OK(TURN含む)":"取得(TURN無し)");
+  }catch(e){
+    console.error("TURN認証情報の取得に失敗(STUNのみで継続)",e);
+    RTC.usingTurn=false;
+    rtcSetDiag("turn","取得失敗→STUNのみ");
+    rtcSetDiag("err","TURN取得失敗: "+(e&&e.message||e));
+  }
+  return cfg;
+}
+/* --- selected candidate pair の種別を取得して経路(relay/srflx/host)を診断表示 --- */
+async function rtcPollStats(){
+  const pc=RTC.pc; if(!pc||!pc.getStats)return;
+  try{
+    const stats=await pc.getStats();
+    let sel=null; const cands={};
+    stats.forEach(r=>{
+      if(r.type==="local-candidate"||r.type==="remote-candidate") cands[r.id]=r;
+      if(r.type==="candidate-pair" && r.selected) sel=r;
+    });
+    if(!sel){ stats.forEach(r=>{ if(r.type==="candidate-pair" && r.state==="succeeded" && r.nominated!==false && !sel) sel=r; }); }
+    if(sel){
+      const lc=cands[sel.localCandidateId], rc=cands[sel.remoteCandidateId];
+      const lt=lc&&(lc.candidateType||lc.type), rt=rc&&(rc.candidateType||rc.type);
+      const relay=(lt==="relay"||rt==="relay");
+      const via = relay?"TURN中継(relay)" : (lt==="srflx"||rt==="srflx")?"直通(srflx)" : (lt==="host"||rt==="host")?"直通(host)" : (lt||rt||"");
+      if(via){ rtcSetDiag("pair", via + (lt&&rt?` [${lt}/${rt}]`:"")); }
+      const st=pc.connectionState||pc.iceConnectionState||"";
+      if(st==="connected"||st==="completed") rtcSetStat(relay?"通話中(TURN)":"通話中(直通)");
+    }
+  }catch(e){}
+}
 function rtcFail(msg){
   const btn=$("rtcCallBtn"); if(btn)btn.textContent="🎤 通話";
   const mb=$("rtcMuteBtn"); if(mb)mb.style.display="none";
@@ -4700,13 +4790,15 @@ async function rtcStartCall(){
   if(!ONLINE.matchRef||!ONLINE.myUid||!ONLINE.oppUid){ rtcFail("利用不可"); return; }
   const btn=$("rtcCallBtn");
   try{
-    RTC.active=true; RTC.remoteSet=false; RTC.muted=false;
+    RTC.active=true; RTC.remoteSet=false; RTC.muted=false; RTC.diag={}; rtcRenderDiag();
     if(btn)btn.textContent="⛔ 通話終了";
-    rtcSetStat("マイク許可…");
+    rtcSetStat("マイク許可…"); rtcSetDiag("mic","許可待ち…");
     // 1) マイク取得(HTTPS必須。GitHub Pages/mybrain.tv は https のため可)。ユーザー操作起点。
     RTC.localStream=await navigator.mediaDevices.getUserMedia({audio:true, video:false});
+    rtcSetDiag("mic","OK");
     // 2) 役割を uid 文字列比較で決定論的に一意化(小さい方=caller)
     RTC.role=(ONLINE.myUid < ONLINE.oppUid)?"caller":"callee";
+    rtcSetDiag("role", RTC.role==="caller"?"caller(発信)":"callee(応答)");
     // 通話ごとに一意なセッションIDを付与(古いoffer/answerによる誤接続を無効化する)。callerが基準。
     RTC.session=(ONLINE.myUid<ONLINE.oppUid?ONLINE.myUid:ONLINE.oppUid)+"_"+Date.now()+"_"+Math.random().toString(36).slice(2,8);
     // 3) シグナリングパス(moves 等とは別チャネル)
@@ -4715,8 +4807,12 @@ async function rtcStartCall(){
     RTC.answerRef=RTC.rtcCol.doc("answer");
     RTC.callerCandCol=RTC.offerRef.collection("callerCandidates");
     RTC.calleeCandCol=RTC.answerRef.collection("calleeCandidates");
-    // 4) PeerConnection(通話開始のたびに新規生成)
-    const pc=new RTCPeerConnection(RTC_ICE);
+    // 4) ICEサーバを解決(TURN_ENDPOINT があれば Worker から取得して STUN とマージ。失敗時 STUN のみ)
+    const iceCfg=await rtcResolveIce();
+    // iceTransportPolicy は 'all'(既定)。TURN必須かの診断で relay 強制テストをしたい場合のみ次を有効化:
+    // iceCfg.iceTransportPolicy='relay';
+    // 5) PeerConnection(通話開始のたびに新規生成)
+    const pc=new RTCPeerConnection(iceCfg);
     RTC.pc=pc; RTC.remoteStream=new MediaStream();
     RTC.localStream.getTracks().forEach(t=>pc.addTrack(t, RTC.localStream));
     // 相手音声を受信 → 非表示<audio>で再生(自分の声は再生しない)
@@ -4729,8 +4825,11 @@ async function rtcStartCall(){
     const mb=$("rtcMuteBtn"); if(mb){ mb.style.display=""; rtcUpdMuteBtn(); }
   }catch(e){
     console.error("通話開始失敗",e);
-    rtcCleanup(false);
-    rtcFail((e&&(e.name==="NotAllowedError"||e.name==="SecurityError"))?"マイク不許可":(e&&e.name==="NotFoundError")?"マイク無し":"利用不可");
+    const em=(e&&(e.name==="NotAllowedError"||e.name==="SecurityError"))?"マイク不許可":(e&&e.name==="NotFoundError")?"マイク無し":"利用不可";
+    if(em==="マイク不許可"||em==="マイク無し") rtcSetDiag("mic",em);
+    rtcCleanup(false);   // ※cleanupはRTC.diagを消さない(失敗理由を診断パネルに残す)
+    rtcSetDiag("err",(e&&(e.name||e.message))?((e.name||"")+" "+(e.message||"")).trim():String(e));
+    rtcFail(em);
   }
 }
 /* caller: offerを作り、answer/相手ICEを購読 */
@@ -4742,14 +4841,15 @@ async function rtcRunCaller(){
   const offer=await pc.createOffer({offerToReceiveAudio:true});
   await pc.setLocalDescription(offer);
   await RTC.offerRef.set({type:offer.type, sdp:offer.sdp, session:RTC.session, from:ONLINE.myUid, ts:olTS()});
-  rtcSetStat("相手待ち");
+  rtcSetStat("相手待ち"); rtcSetDiag("signal","offer送信→answer待ち");
   // answer(callee)を待つ → setRemoteDescription(セッション一致・未設定時のみ)
   RTC.unsubs.push(RTC.answerRef.onSnapshot(async snap=>{
     try{ const data=snap.exists?snap.data():null;
       if(!data||!data.sdp||data.session!==RTC.session)return;
       if(pc.currentRemoteDescription)return;
       await pc.setRemoteDescription(new RTCSessionDescription({type:data.type, sdp:data.sdp}));
-    }catch(e){ console.error("answer適用失敗",e); }
+      rtcSetDiag("signal","answer受信");
+    }catch(e){ console.error("answer適用失敗",e); rtcSetDiag("err","answer適用失敗: "+(e&&e.message||e)); }
   }, err=>console.error("answer購読エラー",err)));
   // callee の ICE候補を購読 → addIceCandidate
   RTC.unsubs.push(RTC.calleeCandCol.onSnapshot(snap=>{
@@ -4773,8 +4873,8 @@ async function rtcRunCallee(){
       const answer=await pc.createAnswer();
       await pc.setLocalDescription(answer);
       await RTC.answerRef.set({type:answer.type, sdp:answer.sdp, session:RTC.session, from:ONLINE.myUid, ts:olTS()});
-      rtcSetStat("接続中…");
-    }catch(e){ console.error("offer処理失敗",e); RTC.remoteSet=false; }
+      rtcSetStat("接続中…"); rtcSetDiag("signal","offer受信→answer送信");
+    }catch(e){ console.error("offer処理失敗",e); RTC.remoteSet=false; rtcSetDiag("err","offer処理失敗: "+(e&&e.message||e)); }
   }, err=>console.error("offer購読エラー",err)));
   RTC.unsubs.push(RTC.callerCandCol.onSnapshot(snap=>{
     snap.docChanges().forEach(async ch=>{ if(ch.type!=="added")return; const c=ch.doc.data(); if(!c||!c.cand)return;
@@ -4784,10 +4884,11 @@ async function rtcRunCallee(){
 }
 function rtcReflectState(){
   const pc=RTC.pc; if(!pc)return;
+  try{ rtcSetDiag("ice", pc.iceConnectionState||""); rtcSetDiag("conn", pc.connectionState||""); }catch(e){}
   const cs=pc.connectionState||pc.iceConnectionState||"";
   let t;
-  if(cs==="connected"||cs==="completed") t="通話中";
-  else if(cs==="failed") t="接続失敗";
+  if(cs==="connected"||cs==="completed"){ t="通話中"; try{ rtcPollStats(); }catch(e){} }
+  else if(cs==="failed"){ t="接続失敗"; rtcSetDiag("err", RTC.usingTurn?"ICE failed(TURN経由でも接続不可)":"ICE failed(TURN未使用。TURN_ENDPOINT設定を検討)"); }
   else if(cs==="disconnected") t="切断";
   else if(cs==="connecting"||cs==="checking") t="接続中…";
   else t=RTC.remoteSet?"接続中…":"相手待ち";
@@ -4816,7 +4917,8 @@ function rtcCleanup(full){
     const a=$("rtcAudio"); if(a){ try{a.srcObject=null;}catch(e){} }
   }catch(e){ console.error("rtc cleanup",e); }
   RTC.active=false; RTC.pc=null; RTC.localStream=null; RTC.remoteStream=null;
-  RTC.role=null; RTC.session=null; RTC.muted=false; RTC.remoteSet=false;
+  RTC.role=null; RTC.session=null; RTC.muted=false; RTC.remoteSet=false; RTC.usingTurn=false;
+  // ※RTC.diag は意図的に消さない(失敗理由が診断パネルに残るように)。次回 rtcStartCall で初期化。
   RTC.rtcCol=RTC.offerRef=RTC.answerRef=RTC.callerCandCol=RTC.calleeCandCol=null;
   if(full){ rtcRemoveUI(); }
   else{ // バーは残し、再度「通話」を押せる状態に戻す
