@@ -311,7 +311,7 @@ catch(e){ console.error("Firebase init 失敗:",e); }
 
 <script>
 "use strict";
-const GAME_VERSION="P3.18 (フレンド対戦招待: オンライン即時/オフライン保留)";
+const GAME_VERSION="P3.19 (対戦履歴: 決定ボタンの誤遷移バグ修正)";
 const KIFU_FMT=2; // 棋譜の記録フォーマット版(記録項目を増やしたら上げる。読込時に不一致なら警告)
 /* ============ カードデータ ============ */
 const CARDS={};
@@ -628,6 +628,10 @@ function olIsCatchup(){ return ONLINE.active && ONLINE.seq < ONLINE.replayUntil;
 // オンライン対戦が進行中(=未終局)か。棋譜の再生/保存(DL)は対戦中は塞ぎ、終局後のみ提供する。
 // 終局判定は G.phase==="終了"(endGameで設定) / G.over / ONLINE.ended のいずれか。オフライン(vs-AI)は常にfalse。
 function olMatchInProgress(){ return ONLINE.active && !ONLINE.ended && !G.over && G.phase!=="終了"; }
+// 盤面(#ovlの背後)に「見せて良い」生きた対戦/棋譜再生があるか。ホーム/ロビー上に重ねた
+// モーダル(履歴/フレンド)を単にオーバーレイ非表示で閉じると、背後の空の対戦盤面が露出して
+// 壊れたページに見える。これが偽ならホームへ戻す判断に使う(生対戦・棋譜再生中は閉じるだけ)。
+function boardHasLiveContent(){ return (ONLINE.active && !ONLINE.ended) || (!!G && !G.over && G.phase!=="終了") || !!REPLAY; }
 const OL_TURN_MS=90000;      // 手番タイマー(各決定90秒)
 const OL_TIMEOUT_LIMIT=3;    // 連続タイムアウトで時間切れ負け
 const OL_HB_MS=10000;        // ハートビート送信間隔(約10秒)
@@ -5045,7 +5049,7 @@ function showFriends(){
     <div id="frListBox" style="font-size:12px;color:var(--dim)">読み込み中…</div>
    </div>`);
  // モーダルを閉じる時(OK/×)に購読を解除する
- const ok=$("mOk"); if(ok)ok.onclick=()=>{ stopFriendsListeners(); $("ovl").classList.remove("on"); };
+ const ok=$("mOk"); if(ok)ok.onclick=()=>{ stopFriendsListeners(); $("ovl").classList.remove("on"); if(!boardHasLiveContent())showHome(); };
  // 受信申請はリアルタイム購読(承認/拒否で即時反映)
  FRIENDS.reqUnsub=fbDB.collection("users").doc(currentUser.uid).collection("friendRequests")
    .onSnapshot(snap=>olRenderFriendRequests(snap),
@@ -5295,6 +5299,9 @@ async function showStatsHistory(){
  const m=$("acctMenu"); if(m)m.classList.remove("on");
  if(!currentUser||!fbDB){ alert("ログインが必要です"); return; }
  showModal("対戦成績", `<div style="text-align:center;padding:6px 4px"><div style="font-size:20px;color:var(--gold);font-weight:bold;margin-bottom:6px">${olStatsLabel()}</div><div id="histBox" style="color:var(--dim);font-size:12px;margin-top:10px">履歴を読み込み中…</div></div>`);
+ // 決定/×で履歴モーダルを閉じる。ホーム/ロビー(=盤面に生対戦なし)から開いた場合はホームへ戻す。
+ // showModal既定の「オーバーレイを閉じるだけ」だと背後の空の対戦盤面が露出し壊れたページに見えるため。
+ { const ok=$("mOk"); if(ok)ok.onclick=()=>{ $("ovl").classList.remove("on"); if(!boardHasLiveContent())showHome(); }; }
  try{
   // 既にフレンドの相手はボタンを「フレンド済」に切替えるため、自分のフレンド一覧を先に取得
   const friendSet=new Set();
