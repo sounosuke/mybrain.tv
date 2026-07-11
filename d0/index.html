@@ -36,6 +36,14 @@ button.primary{background:#443714;border-color:var(--gold);color:var(--gold);fon
 #hdr{display:flex;gap:12px;align-items:center;padding:4px 8px;background:var(--panel);border:1px solid var(--line);border-radius:8px;font-size:12px}
 #hdr b{color:var(--gold)}
 #hdr .hdrTitle{white-space:nowrap;font-weight:bold}
+/* アカウント(ログイン/ニックネーム) */
+.acct{display:inline-flex;align-items:center;position:relative}
+.acctLogin{font-size:11px;padding:4px 9px;white-space:nowrap}
+.acctName{cursor:pointer;font-size:12px;padding:3px 9px;background:var(--panel2);border:1px solid var(--line);border-radius:6px;white-space:nowrap;max-width:160px;overflow:hidden;text-overflow:ellipsis}
+.acctMenu{display:none;position:absolute;top:100%;right:0;margin-top:4px;background:var(--panel);border:1px solid var(--line);border-radius:8px;box-shadow:0 4px 16px #000a;z-index:90;min-width:150px;flex-direction:column;padding:4px}
+.acctMenu.on{display:flex}
+.acctMenu button{width:100%;text-align:left;border:none;background:transparent;padding:8px 10px;border-radius:5px;font-size:12px}
+.acctMenu button:hover{background:var(--panel2)}
 #hdrMenuBtn{display:none}                 /* PCでは非表示、コントロールはインライン */
 #hdrControls{display:contents}            /* PCでは透過してヘッダのflexに直接並ぶ */
 /* プレイヤー情報バー */
@@ -201,8 +209,8 @@ button.primary{background:#443714;border-color:var(--gold);color:var(--gold);fon
 #ovl.on{display:flex}
 #mdl{background:var(--panel);border:2px solid var(--gold);border-radius:12px;max-width:780px;width:94%;max-height:86vh;display:flex;flex-direction:column}
 #mdl h3{padding:10px 14px;color:var(--gold);font-size:14px;border-bottom:1px solid var(--line)}
-#mdl .bd{padding:10px 14px;overflow-y:auto;display:flex;flex-wrap:wrap;gap:6px}
-#mdl .ft{padding:8px 14px;border-top:1px solid var(--line);display:flex;gap:8px;justify-content:flex-end}
+#mdl .bd{padding:10px 14px;overflow-y:auto;display:flex;flex-wrap:wrap;gap:6px;min-height:0}
+#mdl .ft{padding:8px 14px;border-top:1px solid var(--line);display:flex;gap:8px;justify-content:flex-end;flex-shrink:0}
 .mc{width:130px;min-height:100px;border-radius:7px;border:1px solid #000;padding:5px 6px;font-size:10.5px;line-height:1.35;color:#fff;cursor:pointer;position:relative}
 .mc.sel{outline:3px solid var(--gold)}
 .mc .tx{font-size:9.5px;opacity:.92;margin-top:2px}
@@ -248,12 +256,23 @@ label.row{display:block;margin:7px 0;font-size:12.5px}
 .pipN{display:inline-block;min-width:13px;height:13px;border-radius:50%;background:#666c;color:#fff;font-size:9.5px;text-align:center;line-height:13px;margin-right:1.5px;vertical-align:-2px;border:1px solid #000a}
 .cdot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:3px;border:1px solid #0008;vertical-align:0px}
 </style>
+<!-- Firebase (compat CDN・ビルド不要でグローバル firebase を使う) -->
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<script>
+const firebaseConfig={apiKey:"AIzaSyCOj36Bn8wx7lO4avzoD4cYq8bg8Duz2so",authDomain:"mybrain-tv-d0.firebaseapp.com",projectId:"mybrain-tv-d0",storageBucket:"mybrain-tv-d0.firebasestorage.app",messagingSenderId:"339328533151",appId:"1:339328533151:web:99be510e543a082584d8aa"};
+let fbAuth=null, fbDB=null;
+try{ firebase.initializeApp(firebaseConfig); fbAuth=firebase.auth(); fbDB=firebase.firestore(); }
+catch(e){ console.error("Firebase init 失敗:",e); }
+</script>
 </head>
 <body>
 <div id="app">
  <div id="hdr">
   <span class="hdrTitle">⚔ ディメンション・ゼロ (I-1)</span><span style="font-size:10px;color:var(--dim)" id="verLbl"></span>
   <span class="hspace" style="flex:1"></span>
+  <span id="acct" class="acct"></span>
   <button id="hdrMenuBtn" onclick="document.getElementById('hdr').classList.toggle('hdrOpen')" title="メニュー">☰</button>
   <div id="hdrControls">
    <label style="font-size:11px"><input type="checkbox" id="autoPass" checked> 対応不可時は自動で優先権放棄</label>
@@ -292,7 +311,7 @@ label.row{display:block;margin:7px 0;font-size:12.5px}
 
 <script>
 "use strict";
-const GAME_VERSION="v5.9 (対戦記録: 背景タップで閉じる/背景を明確化)";
+const GAME_VERSION="P3.13 (対戦中の音声チャット WebRTC)";
 const KIFU_FMT=2; // 棋譜の記録フォーマット版(記録項目を増やしたら上げる。読込時に不一致なら警告)
 /* ============ カードデータ ============ */
 const CARDS={};
@@ -563,7 +582,10 @@ let G=null,uidSeq=1;
 const $=id=>document.getElementById(id);
 const other=p=>1-p;
 const key=(r,c)=>r+","+c;
-function log(m,cls){G.logs.push({m,cls});if(typeof document!=="undefined"&&$("log")){const d=document.createElement("div");if(cls)d.className=cls;d.textContent=m;$("log").appendChild(d);$("log").scrollTop=1e9;}}
+// ログ表示用のクラス補正: オンライン後攻(myIndex=1)のときだけ "me"(自分/青)↔"ai"(相手/赤)を入れ替え、
+// 対戦記録の視点をローカルプレイヤーに合わせる。"sys"/"imp"等は不変。保存(G.logs)側は player index基準(0=me)のまま。
+function logCls(cls){ if(ONLINE.active&&ONLINE.myIndex===1&&(cls==="me"||cls==="ai"))return cls==="me"?"ai":"me"; return cls; }
+function log(m,cls){G.logs.push({m,cls});if(typeof document!=="undefined"&&$("log")){const d=document.createElement("div");if(cls)d.className=logCls(cls);d.textContent=m;$("log").appendChild(d);$("log").scrollTop=1e9;}}
 // シード付き乱数(mulberry32)。棋譜の決定論的再現に使う。全ゲーム乱数はここを通す。
 let _rngState=1;
 function seedRng(s){_rngState=(s>>>0)||1;}
@@ -580,6 +602,84 @@ function krec(tag,v){
  return v;
 }
 function krecReplaying(){return KREC.mode==="replay";}
+/* ===== M4: オンライン対戦 リアルタイム同期 =====
+   同期粒度: 「人間の決定関数(humanChoose/humanPickX...)＋payFor」の層で1決定=1メッセージを送受信する。
+   決定論エンジンは seed が同一なら、同じ決定列を同じ順序で適用すれば両クライアントの盤面が完全一致する。
+   優先権制で常に片方だけが決定するので競合しない。決定は単調増加 seq を持つ moves サブコレクションでやり取り。
+   ・自分の決定(pi===myIndex): 通常どおり入力→ moves/{seq} に書き込み(送信)。
+   ・相手の決定(pi!==myIndex): プロンプトを出さず、moves/{seq} を onSnapshot で待って値を供給(受信)。
+   seq は両者が同じ決定列を辿るため自然に一致する(各決定で片方がsend・もう片方がrecvし、双方 seq を1消費)。 */
+let ONLINE={active:false, myIndex:0, myUid:null, oppUid:null, matchId:null,
+  movesRef:null, matchRef:null, movesUnsub:null, matchUnsub:null,
+  seq:0, inbox:{}, waiters:{}, ended:false, _inMyAction:false, _finishWritten:false, oppNick:"相手",
+  // 再接続(復帰再生): replayUntil までの seq は moves から供給(UIを出さず・再送しない)
+  replayUntil:0,
+  // ハートビート/プレゼンス
+  hbTimer:null, wdTimer:null, oppSeenAt:0, _oppPresMs:0, _dcActive:false,
+  // 手番タイマー
+  turnTimerId:null, turnDeadline:0, _turnExpire:null, consecTimeouts:0,
+  oppTimerId:null, oppDeadline:0,
+  // 対戦成績
+  _statsRecorded:false,
+  // 成績履歴からの読み取り専用の棋譜再生中フラグ(書込抑止・データ尽きたら終局扱い)
+  _replayView:false };
+// 復帰再生中(catch-up)か: この間の決定は全て moves から供給し、UIプロンプト/手番タイマー/再送を出さない
+function olIsCatchup(){ return ONLINE.active && ONLINE.seq < ONLINE.replayUntil; }
+// オンライン対戦が進行中(=未終局)か。棋譜の再生/保存(DL)は対戦中は塞ぎ、終局後のみ提供する。
+// 終局判定は G.phase==="終了"(endGameで設定) / G.over / ONLINE.ended のいずれか。オフライン(vs-AI)は常にfalse。
+function olMatchInProgress(){ return ONLINE.active && !ONLINE.ended && !G.over && G.phase!=="終了"; }
+const OL_TURN_MS=90000;      // 手番タイマー(各決定90秒)
+const OL_TIMEOUT_LIMIT=3;    // 連続タイムアウトで時間切れ負け
+const OL_HB_MS=10000;        // ハートビート送信間隔(約10秒)
+const OL_DC_SUSPECT_MS=20000;// 相手のlastSeenがこれ以上更新無し → 切断の可能性(警告表示開始)
+const OL_DC_GRACE_MS=60000;  // 切断猶予60秒。これを超えたら接続側の勝ち確定
+function olClean(v){ // Firestore用に undefined 等を除去(JSON往復)。null許容。
+ try{ return v===undefined?null:JSON.parse(JSON.stringify(v)); }catch(e){ return null; }
+}
+// 自分の決定を送信(seqを1消費)
+async function olSendMove(tag,v){
+ if(ONLINE.ended)return -1; // 終局後は指し手を書き込まない(切断/時間切れ/投了後のゴースト送信を防ぐ)
+ const seq=ONLINE.seq++;
+ const rec={seq, by:ONLINE.myUid, tag, v:olClean(v), ts:olTS()};
+ try{ await ONLINE.movesRef.doc(String(seq)).set(rec); }
+ catch(e){ console.error("moves送信失敗 seq="+seq,e); olNet("送信に失敗しました。接続を確認してください。"); }
+ return seq;
+}
+// 相手の決定を受信(seqを1消費)。届くまで待つ。
+async function olRecvMove(tag){
+ const seq=ONLINE.seq++;
+ // 読み取り専用の棋譜再生(成績履歴からの再生): 記録済みの手を全て供給し終えたら、
+ // それ以上の決定は要求せず終局として畳む(ライブ待受に落ちてハングしない/書込もしない)。
+ if(ONLINE._replayView && ONLINE.inbox[seq]===undefined){ if(!G.over){G.over=true;log("(再生: 記録された指し手はここまでです)","sys");} return null; }
+ const catchup=seq<ONLINE.replayUntil; // 復帰再生中はinboxに既に在り即時解決(UI/相手タイマー不要)
+ if(!catchup && ONLINE.inbox[seq]===undefined && !ONLINE.ended){
+  try{ if($("pMsg"))$("pMsg").textContent="⏳ 相手の操作を待っています…"; }catch(e){}
+  olStartOppTimer(); // 相手の手番(残りN秒)を表示(ローカル推定)
+ }
+ const doc=await olWaitFor(seq);
+ if(!catchup) olClearOppTimer();
+ if(doc && doc.tag!==tag) console.warn("moves desync seq="+seq+" 要求["+tag+"]≠受信["+doc.tag+"]");
+ return doc? doc.v : null;
+}
+function olWaitFor(seq){
+ return new Promise((resolve)=>{
+  if(ONLINE.ended){ resolve(null); return; }
+  if(ONLINE.inbox[seq]!==undefined){ resolve(ONLINE.inbox[seq]); return; }
+  ONLINE.waiters[seq]=resolve;
+ });
+}
+function olDeliver(rec){
+ if(rec==null||rec.seq==null)return;
+ ONLINE.inbox[rec.seq]=rec;
+ const w=ONLINE.waiters[rec.seq];
+ if(w){ delete ONLINE.waiters[rec.seq]; w(rec); }
+}
+// 終局/切断で待ち行列を解放(nullを返し、G.overで各ループが畳まれる)
+function olReleaseWaiters(){
+ const ws=ONLINE.waiters; ONLINE.waiters={};
+ for(const k in ws){ try{ ws[k](null); }catch(e){} }
+}
+function olNet(msg){ try{ if($("pMsg"))$("pMsg").textContent=msg; log("⚠ "+msg,"imp"); }catch(e){} }
 function shuffle(a){for(let i=a.length-1;i>0;i--){const j=Math.floor(rnd()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;}
 function newGame(deck0,deck1,opts={}){
  const seed=(opts.seed!=null)?(opts.seed>>>0):(Math.floor(Math.random()*0xFFFFFFFF)>>>0); // シード自体の生成は非決定でよい
@@ -590,13 +690,13 @@ function newGame(deck0,deck1,opts={}){
  else if(!opts.headless||opts.record)KREC={mode:"record",stream:[],i:0};
  else KREC={mode:"off",stream:[],i:0};
  G={pl:[],grid:{},bases:[[null,null,null],[null,null,null]],stacks:[[]],trigQ:[],battles:[],
-    seed,turnNo:0,ap:0,first:Math.floor(rnd()*2),phase:"準備",over:false,winner:null,placeSeq:0,logs:[],headless:!!opts.headless,actGuard:0};
+    seed,turnNo:0,ap:0,first:(opts.first!=null?((opts.first>>>0)&1):Math.floor(rnd()*2)),phase:"準備",over:false,winner:null,placeSeq:0,logs:[],headless:!!opts.headless,actGuard:0};
  G.ap=G.first;
  [deck0,deck1].forEach((dk,i)=>{
   const deck=[];
   dk.list.forEach(e=>{if(typeof e==="number")deck.push(e,e);else for(let k=0;k<e.n;k++)deck.push(e.no);});
   shuffle(deck);
-  G.pl.push({i,name:i===0?"あなた":(CFG.enabled?"qwen":"D-0ボット"),isAI:opts.headless?true:i===1,deckDef:dk,deck,hand:[],grave:[],energy:[],smash:[],planUp:false,aiFlags:{},known:[]});
+  G.pl.push({i,name:(opts.names&&opts.names[i])||(i===0?"あなた":(CFG.enabled?"qwen":"D-0ボット")),isAI:opts.online?false:(opts.headless?true:i===1),deckDef:dk,deck,hand:[],grave:[],energy:[],smash:[],planUp:false,aiFlags:{},known:[]});
  });
  G.pl.forEach(p=>{for(let k=0;k<5;k++)p.hand.push(p.deck.pop());});
  // 分析用: 初期手札と、以後の(非公開)ドロー履歴を裏で記録。終了時にまとめて公開する。
@@ -605,11 +705,18 @@ function newGame(deck0,deck1,opts={}){
  // 決定論棋譜のメタ情報(デッキ番号+枚数, シード, バージョン)。終了時に stream を足して保存できる。
  const compactDeck=dk=>dk.list.map(e=>typeof e==="number"?[e,2]:[e.no,e.n]);
  G.kifu={fmt:"D0REC",v:GAME_VERSION,kf:KIFU_FMT,names:[deck0.name,deck1.name],decks:[compactDeck(deck0),compactDeck(deck1)],seed,first:G.first};
+ // 新しいゲーム開始時は対戦記録(表示ログ)をクリア。G.logsは上でリセット済みなのでDOMも消す。
+ if(typeof document!=="undefined"&&$("log"))$("log").innerHTML="";
+ // 前局の「デュエル終了」等の黄色枠(#pMsg/#pBtns)が残らないよう、新規ゲーム開始時にクリア。
+ if(typeof document!=="undefined"&&$("pMsg"))prompt2("",[]);
  log(`=== デュエル開始 (ディメンション・ゼロ シミュレーター ${GAME_VERSION}) ===`,"imp");
- log(`あなた:「${deck0.name}」 / ${G.pl[1].name}:「${deck1.name}」`,"sys");
+ if(ONLINE.active){ const me=POV(),op=other(me); log(`あなた(${G.pl[me].name}):「${G.pl[me].deckDef.name}」 / 相手(${G.pl[op].name}):「${G.pl[op].deckDef.name}」`,"sys"); }
+ else log(`あなた:「${deck0.name}」 / ${G.pl[1].name}:「${deck1.name}」`,"sys");
  log(`${G.pl[G.first].name}が先攻`,"imp");
 }
 function homeRow(p){return p===0?1:3;}
+// 描画上の「自分」= pov。オンラインでは myIndex(後攻なら1)、オフライン(vs-AI)は常に0。
+function POV(){return ONLINE.active?ONLINE.myIndex:0;}
 function areaOf(u){return u.r===2?"center":(u.r===homeRow(u.ctrl)?"home":"enemy");}
 function units(){return Object.values(G.grid);}
 function uAt(r,c){return G.grid[key(r,c)]||null;}
@@ -716,6 +823,22 @@ async function payFor(pi,cost,label){
   if(sel){(sel.e||[]).forEach(i=>{if(p.energy[i])p.energy[i].frozen=true;});(sel.s||[]).forEach(i=>{if(p.smash[i])p.smash[i].frozen=true;});}
   return true;
  }
+ // オンライン: 支払い選択(どのエネ/スマッシュを凍結するか)は手動払い設定に依存し得るため、支払者が確定して同期する
+ if(ONLINE.active){
+  if(olIsCatchup() || pi!==ONLINE.myIndex){
+   const v=await olRecvMove("pay");
+   if(v&&v.cancel)return false;
+   if(v){(v.e||[]).forEach(i=>{if(p.energy[i])p.energy[i].frozen=true;});(v.s||[]).forEach(i=>{if(p.smash[i])p.smash[i].frozen=true;});krec("pay",v);}
+   return true;
+  }
+  const eB0=p.energy.map(e=>e.frozen),sB0=p.smash.map(s=>s.frozen);
+  // 手番タイマー: 支払いモーダルで90秒放置したら自動で支払い元を選択(autoSelectPay)
+  const ok0=await olRunMyDecision(()=>payForImpl(pi,cost,label), ()=>olAutoPay(pi,cost));
+  let sel0=null;
+  if(ok0!==false){sel0={e:[],s:[]};p.energy.forEach((e,i)=>{if(e.frozen&&!eB0[i])sel0.e.push(i);});p.smash.forEach((s,i)=>{if(s.frozen&&!sB0[i])sel0.s.push(i);});krec("pay",sel0);}
+  await olSendMove("pay", ok0===false?{cancel:true}:sel0);
+  return ok0;
+ }
  const eB=p.energy.map(e=>e.frozen),sB=p.smash.map(s=>s.frozen);
  const ok=await payForImpl(pi,cost,label);
  if(ok!==false){const sel={e:[],s:[]};p.energy.forEach((e,i)=>{if(e.frozen&&!eB[i])sel.e.push(i);});p.smash.forEach((s,i)=>{if(s.frozen&&!sB[i])sel.s.push(i);});krec("pay",sel);}
@@ -725,8 +848,14 @@ async function payForImpl(pi,cost,label){
  const p=G.pl[pi];
  if(cost.total===0)return true;
  if(p.isAI||G.headless){payCost(p,cost);return true;}
+ const manual=$("manualPay").checked;
+ // 生命の門(200)など: 支払いに使った「対象エネ」も効果解決で場に出るため、
+ // どのエネで色/無色を払うかによって手元に残る資源(=フェアリー移動用など)が変わる。
+ // よって対象エネがある時は常に手動選択(色エネの充て先も含めて)を出す。
+ const hasLifeTarget=p.energy.some(e=>e._lifeTarget);
+ if(manual&&hasLifeTarget)return await humanPay(p,cost,label);
  // 色付き分は自動(同色ならどれでも同じ)。無色分だけ選択の余地がある
- if(cost.n===0||!$("manualPay").checked){payCost(p,cost);renderAll();return true;}
+ if(cost.n===0||!manual){payCost(p,cost);renderAll();return true;}
  // 無色に使える種類が1つしかなければ選択不要
  const coloredUsed={};for(const c in cost.c)coloredUsed[c]=cost.c[c];
  const kinds=new Set();
@@ -750,38 +879,53 @@ function autoSelectPay(p,cost){
  return {selE,selS};
 }
 function humanPay(p,cost,label){
+ resetModalChrome();
  return new Promise(res=>{
-  // 色付き分を仮フリーズ(確定は決定時)
-  const coloredIdx=[];
-  for(const col in cost.c){let need=cost.c[col];
-   p.energy.forEach((e,i)=>{if(need&&!e.frozen&&!coloredIdx.includes(i)&&enMatch(p.i,e,col)){coloredIdx.push(i);need--;}});}
+  const pi=p.i;
   $("mT").textContent=`支払い: ${label}`;
   const bd=$("mB");
   const selE=new Set(),selS=new Set();
   const coloredTxt=Object.entries(cost.c).map(([c,n])=>`${c}×${n}`).join(" ");
+  // 色要件(cost.c)を満たすように選択集合を初期化。生命の門の対象エネ(_lifeTarget)を色分に優先して充て、
+  // 手元の通常エネを温存する既定にする(これが最適な場合が多い)。プレイヤーは自由に変更できる。
+  for(const col in cost.c){let need=cost.c[col];
+   p.energy.forEach((e,i)=>{if(need&&!e.frozen&&!selE.has(i)&&e._lifeTarget&&enMatch(pi,e,col)){selE.add(i);need--;}});
+   p.energy.forEach((e,i)=>{if(need&&!e.frozen&&!selE.has(i)&&enMatch(pi,e,col)){selE.add(i);need--;}});}
+  // 選択中のエネで色要件(cost.c)を充足できるか(2部マッチング。レインボーは全色に対応)
+  function colorOK(){
+   const arr=[...selE].map(i=>p.energy[i]);
+   const slots=[];for(const col in cost.c)for(let k=0;k<cost.c[col];k++)slots.push(col);
+   if(slots.length>arr.length)return false;
+   const match=new Array(arr.length).fill(-1);
+   function aug(s,seen){for(let e=0;e<arr.length;e++){if(seen[e]||!enMatch(pi,arr[e],slots[s]))continue;seen[e]=true;if(match[e]<0||aug(match[e],seen)){match[e]=s;return true;}}return false;}
+   for(let s=0;s<slots.length;s++)if(!aug(s,new Array(arr.length).fill(false)))return false;
+   return true;
+  }
+  const okSel=()=>selE.size+selS.size===cost.total&&colorOK();
   function draw(){
+   const cnt=selE.size+selS.size, full=cnt>=cost.total;
    bd.innerHTML=`<div style="width:100%;font-size:11.5px;color:var(--dim)">
-     ${coloredTxt?`色指定分(${coloredTxt})は同色エネルギーから自動で支払います。`:""}
-     <b style="color:var(--gold)">無色${cost.n}</b>の支払い元を選んでください(どの色を温存するかが重要):</div>
+     ${coloredTxt?`<b style="color:var(--gold)">色 ${coloredTxt}</b> ＋ `:""}<b style="color:var(--gold)">無色${cost.n}</b>(合計${cost.total})の支払い元を選んでください。${coloredTxt?"色エネの充て先も自分で選べます(温存したいエネを残せます)。":"どの色を温存するかが重要です。"}</div>
     <div style="width:100%"><b style="font-size:12px">エネルギーゾーン:</b><br>${p.energy.map((e,i)=>{
-     const auto=coloredIdx.includes(i);
-     return `<span class="paychip ${selE.has(i)?"sel":""} ${(e.frozen||auto)?"dis":""}" data-e="${i}" style="background:var(--${CARDS[e.no].col})">${CARDS[e.no].col} ${CARDS[e.no].name}${e.frozen?"(凍結中)":auto?"(色指定分)":""}</span>`;}).join("")||"なし"}</div>
+     return `<span class="paychip ${selE.has(i)?"sel":""} ${e.frozen?"dis":""}" data-e="${i}" style="background:var(--${CARDS[e.no].col})">${CARDS[e.no].col} ${CARDS[e.no].name}${e._lifeTarget?"(生命の門で出す対象・払っても場に出ます)":e.frozen?"(凍結中)":""}</span>`;}).join("")||"なし"}</div>
     <div style="width:100%"><b style="font-size:12px">スマッシュゾーン(裏向き・無色に使用可):</b><br>${p.smash.map((s,i)=>
      `<span class="paychip ${selS.has(i)?"sel":""} ${s.frozen?"dis":""}" data-s="${i}" style="background:#555">スマッシュ${s.frozen?"(凍結中)":""}</span>`).join("")||"なし"}</div>`;
    bd.querySelectorAll("[data-e]").forEach(el=>{const i=+el.dataset.e;
-    if(p.energy[i].frozen||coloredIdx.includes(i))return;
-    el.onclick=()=>{if(selE.has(i))selE.delete(i);else if(selE.size+selS.size<cost.n)selE.add(i);draw();};});
+    if(p.energy[i].frozen)return;
+    el.onclick=()=>{if(selE.has(i))selE.delete(i);else if(selE.size+selS.size<cost.total)selE.add(i);draw();};});
    bd.querySelectorAll("[data-s]").forEach(el=>{const i=+el.dataset.s;
     if(p.smash[i].frozen)return;
-    el.onclick=()=>{if(selS.has(i))selS.delete(i);else if(selE.size+selS.size<cost.n)selS.add(i);draw();};});
-   $("mOk").disabled=selE.size+selS.size!==cost.n;
-   $("mN").textContent=`無色 ${selE.size+selS.size}/${cost.n}枚 選択`;
+    el.onclick=()=>{if(selS.has(i))selS.delete(i);else if(selE.size+selS.size<cost.total)selS.add(i);draw();};});
+   $("mOk").disabled=!okSel();
+   $("mN").textContent=`合計 ${cnt}/${cost.total}枚選択${(full&&coloredTxt&&!colorOK())?` ｜ 色 ${coloredTxt} を満たしていません`:""}`;
   }
   const cleanup=()=>{$("ovl").classList.remove("on");};
+  // フッター(.ft)/決定(#mOk)は resetModalChrome で復元済みだが、念のため再保証(モバイルで決定ボタンが隠れて支払い確定不能になるのを防ぐ)
+  const _ft=($("mdl")&&$("mdl").querySelector)?$("mdl").querySelector(".ft"):null; if(_ft)_ft.style.display="";
+  $("mOk").style.display="";$("mOk").textContent="決定";
   $("mCancel").style.display="";
   $("mCancel").onclick=()=>{cleanup();res(false);};
   $("mOk").onclick=()=>{if($("mOk").disabled)return;
-   coloredIdx.forEach(i=>p.energy[i].frozen=true);
    [...selE].forEach(i=>p.energy[i].frozen=true);
    [...selS].forEach(i=>p.smash[i].frozen=true);
    cleanup();renderAll();res(true);};
@@ -1083,7 +1227,7 @@ async function performAction(pi,act){
   if(ab.sqTgt){
    const ss=ab.sqTgt(pi,u);if(!ss.length)return false;
    if(krecReplaying())sq=krec("sq",null);
-   else{sq=p.isAI?aiPickSq(pi,u,ss):await humanPickSquare(0,ss,`${u.d.name}の能力: 移動先を選択(赤枠=バトル)`,true,true);krec("sq",sq);}
+   else{sq=p.isAI?aiPickSq(pi,u,ss):await humanPickSquare(pi,ss,`${u.d.name}の能力: 移動先を選択(赤枠=バトル)`,true,true);krec("sq",sq);}
    if(!sq)return false;
   }
   if(!(await payFor(pi,parseCost(ab.cost),`${u.d.name}の能力`)))return false;
@@ -1119,7 +1263,7 @@ async function performAction(pi,act){
    }else{
     // tgtXが無い(電脳世界の預言書=X枚見る等): 従来通りXを直接決める
     if(krecReplaying())xVal=krec("x",0);
-    else{xVal=p.isAI?fx.aiX(pi,mx):await humanPickX(mx,`《${d.name}》のXを決定(上限${mx})`);krec("x",xVal);}
+    else{xVal=p.isAI?fx.aiX(pi,mx):await humanPickX(pi,mx,`《${d.name}》のXを決定(上限${mx})`);krec("x",xVal);}
     if(xVal==null)return false;
    }
   }else if(fx.tgt){
@@ -1127,7 +1271,7 @@ async function performAction(pi,act){
    if(cost.x){
     const mx=maxXFor(p,cost);if(mx<0)return false;
     if(krecReplaying())xVal=krec("x",0);
-    else{xVal=p.isAI?fx.aiX(pi,mx,tgts):await humanPickX(mx,`《${d.name}》のXを決定(上限${mx})`);krec("x",xVal);}
+    else{xVal=p.isAI?fx.aiX(pi,mx,tgts):await humanPickX(pi,mx,`《${d.name}》のXを決定(上限${mx})`);krec("x",xVal);}
     if(xVal==null)return false;
    }
   }
@@ -1139,7 +1283,7 @@ async function performAction(pi,act){
    }else{
     for(let i=0;i<tgts.length;i++){
      if(i===tgts.length-1)tgts[i].amt=rem;
-     else{const a2=await humanPickX(rem,`${tgts[i].u.d.name} への割り振り(×1000ダメージ, 残り${rem})`);if(a2==null)return false;tgts[i].amt=a2;rem-=a2;}
+     else{const a2=await humanPickX(pi,rem,`${tgts[i].u.d.name} への割り振り(×1000ダメージ, 残り${rem})`);if(a2==null)return false;tgts[i].amt=a2;rem-=a2;}
     }
    }
   }
@@ -1154,7 +1298,17 @@ async function performAction(pi,act){
   }
  }
  const payC={c:cost.c,n:cost.n+xVal,total:cost.total+xVal};
- if(!(await payFor(pi,payC,`《${d.name}》のプレイ${cost.x?`(X=${xVal})`:""}`)))return false;
+ // 生命の門(200): 手動支払い画面で「場に出す対象のエネユニット」を明示する(誤解防止)。
+ // ※このユニットは支払いに使っても効果解決時にそのまま場へ出る(1エネ損にならない)ため、
+ //   マーク付けのみ行い、支払い候補からは除外しない(除外すると逆に1エネ余分に消費するため)。
+ let lifeGateMark=null;
+ if(no===200&&tgts[0]&&tgts[0].kind==="en"){
+  const re=p.energy[tgts[0].ei];
+  if(re&&re.no===tgts[0].no){re._lifeTarget=true;lifeGateMark=re;}
+ }
+ const _paid=await payFor(pi,payC,`《${d.name}》のプレイ${cost.x?`(X=${xVal})`:""}`);
+ if(lifeGateMark)delete lifeGateMark._lifeTarget;
+ if(!_paid)return false;
  if(sacU){removeFromGrid(sacU);p.grave.push(sacU.no);log(`${p.name}: 追加コストで ${sacU.d.name} を廃棄`,pi?"ai":"me");emitPig(sacU);}
  if(act.plan){p.grave.length;p.deck.pop();p.planUp=false;} // プランから(カードはスタックへ)
  else{const hi=p.hand.indexOf(no);p.hand.splice(hi,1);}
@@ -1420,6 +1574,12 @@ function endGame(){
  const msg=G.winner==null?"引き分け":`${G.pl[G.winner].name}の勝利!`;
  log(`=== デュエル終了: ${msg} ===`,"imp");
  if(G.kifu&&KREC.mode==="record"){G.kifu.stream=KREC.stream.slice();G.kifu.winner=G.winner;} // 決定論棋譜のstreamを確定
+ if(ONLINE.active){ // オンライン: 終局結果をmatchドキュメントへ＋対戦成績を記録
+  const wUid=G.winner==null?null:(G.winner===ONLINE.myIndex?ONLINE.myUid:ONLINE.oppUid);
+  if(!ONLINE._finishWritten) olWriteFinish(wUid,"normal");
+  olStopHeartbeat(); olClearTurnTimer(); olClearOppTimer(); olHideDcHud();
+  olRecordOwnStats({winnerUid:wUid, reason:"normal"});
+ }
  // 分析用に、対局中は非公開だった情報(初期手札・毎ターンのドロー・最終手札)を終了時にまとめて公開する。
  // これと本文ログ(プレイ/移動/エネ置き)を突き合わせれば、各時点の手札を完全に再構成できる。
  log(`--- 非公開情報の公開(分析用) ---`,"sys");
@@ -1445,13 +1605,15 @@ function endGame(){
   山札 あなた${G.pl[0].deck.length}枚 ／ 相手${G.pl[1].deck.length}枚</div>
   <div style="margin-top:8px;display:flex;gap:6px;justify-content:center;flex-wrap:wrap"><button onclick="copyLog()">📋ログをコピー</button><button onclick="startReplay()">🎞 棋譜を再生</button><button onclick="exportReplay()">💾 棋譜を保存(.txt)</button></div>`;
  showModal("デュエル終了",resultHTML,[]);
- prompt2(`🏁 デュエル終了: ${msg}`,[
+ const endBtns=[
   ["🎞 棋譜を再生",startReplay],
   ["💾 棋譜を保存(.txt)",exportReplay],
   ["結果を再表示",()=>showModal("デュエル終了",resultHTML,[])],
-  ["📋ログをコピー",copyLog],
-  ["新しいゲーム",()=>location.reload(),true]
- ]);
+  ["📋ログをコピー",copyLog]
+ ];
+ if(ONLINE.active)endBtns.push(["🏠 ロビーに戻る",()=>{olEndCleanup();olRenderMenu();},true]);
+ endBtns.push(["新しいゲーム",()=>location.reload(),!ONLINE.active]);
+ prompt2(`🏁 デュエル終了: ${msg}`,endBtns);
 }
 /* ============ 対象選択 ============ */
 function mkCtx(pi){return {pi,p:G.pl[pi],opp:G.pl[other(pi)],pick:pickTargets};}
@@ -1658,7 +1820,15 @@ function hasAccel(u){
  return false;
 }
 function grantFx(spec,desc){return async(cx,tgts)=>{tgts.forEach(t=>{(t.u.granted=t.u.granted||[]).push({...spec});log(`${t.u.d.name} に${desc}を付与(ターン終了時まで)`,"sys");});};}
-function humanPickX(mx,title){
+async function humanPickX(pi,mx,title){
+ if(ONLINE.active && !ONLINE._inMyAction){
+  if(olIsCatchup() || pi!==ONLINE.myIndex){ return await olRecvMove("x"); }
+  const r=await olRunMyDecision(()=>humanPickXCore(mx,title), ()=>0); // 放置ならX=0
+  await olSendMove("x",r); return r;
+ }
+ return humanPickXCore(mx,title);
+}
+function humanPickXCore(mx,title){
  const cands=[];for(let v=0;v<=Math.min(mx,15);v++)cands.push({kind:"num",v,label:"X="+v});
  return modalPick(title,cands,1,false,true).then(sel=>sel&&sel.length?sel[0].v:null);
 }
@@ -2932,7 +3102,9 @@ function renderAll(){
  if(G._reconstruct)return; // 棋譜の再構築中はスナップショットだけ取り、DOM描画はしない(高速)
  $("hTurn").textContent=Math.floor(G.turnNo/2)+1;
  const senko=G.ap===G.first;
- $("apLabel").innerHTML=`${G.ap===0?"🧑あなたの":"🤖"+G.pl[1].name+"の"} <span style="font-size:10px;color:var(--dim)">${senko?"先攻":"後攻"}</span>`;
+ $("apLabel").innerHTML=(ONLINE.active
+   ? `${G.ap===ONLINE.myIndex?"🧑":"🎮"}${escapeHTML(G.pl[G.ap].name)}の`
+   : `${G.ap===0?"🧑あなたの":"🤖"+G.pl[1].name+"の"}`)+` <span style="font-size:10px;color:var(--dim)">${senko?"先攻":"後攻"}</span>`;
  const PHASES=["リリース","ドロー","エネルギー","メイン","スマッシュ","リカバリー"];
  const PH_EN={"リリース":"Release","ドロー":"Draw","エネルギー":"Energy","メイン":"Main","スマッシュ":"Smash","リカバリー":"Recovery"};
  // バトルステップ表示中はフェーズ行を出さず、バトルのみ表示(その方が1行に収まる)。それ以外はフル英語のフェーズ帯。現在フェーズは色で強調(括弧なし)。
@@ -2973,7 +3145,7 @@ function replayRender(){
  if(f.over)prompt2(f.winner===0?"🏆 あなたの勝利で終局":(f.winner===1?"🏳 あなたの敗北で終局":"終局"),[]);
  else prompt2(`🎞 再生中 ${REPLAY.idx+1}/${REPLAY.frames.length} ｜ ${G.pl[f.ap]?G.pl[f.ap].name:""} ターン${dispT}・${f.phase||""}`,[]);
  const logEl=$("log");
- if(logEl){logEl.innerHTML="";REPLAY.logs.slice(0,f.logLen).forEach(l=>{const d=document.createElement("div");if(l.cls)d.className=l.cls;d.textContent=l.m;logEl.appendChild(d);});logEl.scrollTop=1e9;}
+ if(logEl){logEl.innerHTML="";REPLAY.logs.slice(0,f.logLen).forEach(l=>{const d=document.createElement("div");if(l.cls)d.className=logCls(l.cls);d.textContent=l.m;logEl.appendChild(d);});logEl.scrollTop=1e9;}
  const sl=$("replaySlider");if(sl){sl.max=REPLAY.frames.length-1;sl.value=REPLAY.idx;}
  const lb=$("replayLabel");if(lb)lb.textContent=`${REPLAY.idx+1} / ${REPLAY.frames.length}`;
 }
@@ -3000,6 +3172,7 @@ function openReplayBar(){
  bar.style.display="flex";
 }
 function startReplay(){
+ if(olMatchInProgress()){alert("対戦中は棋譜を再生できません。終局後(結果画面)にご利用ください。");return;}
  if(!(G.history&&G.history.length)){alert("再生できる棋譜がありません(この対局は記録されていません)");return;}
  const o=$("ovl");if(o)o.classList.remove("on"); // 終局モーダルが開いていれば閉じる
  REPLAY={frames:G.history,logs:G.logs.slice(),idx:0,liveG:G,imported:false};
@@ -3010,11 +3183,12 @@ function exitReplay(){
  const rp=REPLAY;REPLAY=null;
  if(rp&&rp.imported){location.reload();return;} // 読み込んだ棋譜の再生後はタイトルへ戻す
  if(rp&&rp.liveG){G=rp.liveG;G._replay=true;renderAll();delete G._replay;
-  const logEl=$("log");if(logEl){logEl.innerHTML="";G.logs.forEach(l=>{const d=document.createElement("div");if(l.cls)d.className=l.cls;d.textContent=l.m;logEl.appendChild(d);});logEl.scrollTop=1e9;}}
+  const logEl=$("log");if(logEl){logEl.innerHTML="";G.logs.forEach(l=>{const d=document.createElement("div");if(l.cls)d.className=logCls(l.cls);d.textContent=l.m;logEl.appendChild(d);});logEl.scrollTop=1e9;}}
 }
 // 棋譜を.txt(JSON)で保存。d(カード定義)とdeckDef.list(冗長)は除いてサイズを抑える(読み込み時にnoから復元)
 // 棋譜を保存: 決定論形式(D0REC = 2デッキ[no,count]+シード+指し手列)。数KBで済む。
 function exportReplay(){
+ if(olMatchInProgress()){alert("対戦中は棋譜を保存できません。終局後(結果画面)にご利用ください。");return;}
  const k=G.kifu&&G.kifu.stream?G.kifu:(G.kifu&&KREC.mode==="record"?{...G.kifu,stream:KREC.stream,winner:G.winner}:null);
  if(!k){alert("保存できる棋譜がありません");return;}
  const json=JSON.stringify(k);
@@ -3061,7 +3235,9 @@ function importReplayFile(){
 }
 function colDot(col){return `<span class="colbadge" style="background:var(--${col})"></span>`;}
 function renderPbar(pi){
- const p=G.pl[pi],el=$("pbar"+pi);
+ // pi は「表示スロット」(0=自分バー/下, 1=相手バー/上)。実プレイヤーは pov 基準で割り当てる。
+ const ai=(pi===0?POV():other(POV()));
+ const p=G.pl[ai],el=$("pbar"+pi);
  const deckLen=p.deck?p.deck.length:p.deckN;                                   // 再生フレームは deckN(枚数のみ)
  const planNo=p.planUp?(p.deck?p.deck[p.deck.length-1]:(p.planTop??null)):null; // 再生フレームは planTop
  const deckName=(p.deckDef?p.deckDef.name:p.deckDefName)||"";
@@ -3073,8 +3249,8 @@ function renderPbar(pi){
  el.innerHTML=`<span class="nm">${pi===0?"🧑 ":"🤖 "}${p.name}<small class="pbDeck" style="color:var(--dim)"> ${deckName}</small></span>
   <span class="zn ${pi===0&&UI.onDeck?"actionable":""}" id="deckZ${pi}" title="山札 ${deckLen}枚${pi===0?" ／ クリックでプラン作成(無1): 山札の1番上を公開":"（相手の山札）"}"><span class="deckChip"></span>${deckLen}</span>
   ${planNo!=null?`<span class="zn planCard ${pi===0&&UI.onPlan?"actionable":""}" id="planZ${pi}" data-no="${planNo}" title="プラン公開中(山札の一番上): ${CARDS[planNo].name}。ホバー/タップで詳細${pi===0&&UI.onPlan?" ／ クリックでプラン更新":""}" style="${artBg(planNo,CARDS[planNo].col)}"><span class="pcNm">${CARDS[planNo].name}</span></span>`:""}
-  <span class="zn" onclick="showGrave(${pi})" title="墓地を表示">⚰ ${p.grave.length}</span>
-  <span class="zn enZn" onclick="showEnergy(${pi})" title="エネルギー＋スマッシュ。色付き=エネルギー / 灰=スマッシュ(無色払い可・${p.smash.length}/7で敗北)。縦=リリース(使用可)、横倒し=フリーズ(使用済み)。クリックで詳細"><span class="zIco">⚡</span><span class="energy">${resChips}</span></span>
+  <span class="zn" onclick="showGrave(${ai})" title="墓地を表示">⚰ ${p.grave.length}</span>
+  <span class="zn enZn" onclick="showEnergy(${ai})" title="エネルギー＋スマッシュ。色付き=エネルギー / 灰=スマッシュ(無色払い可・${p.smash.length}/7で敗北)。縦=リリース(使用可)、横倒し=フリーズ(使用済み)。クリックで詳細"><span class="zIco">⚡</span><span class="energy">${resChips}</span></span>
   <span class="zn" title="${pi===1?"プラン経由のドローや手札公開で判明したカード":"手札"}">🖐 ${p.hand.length}${knownHTML}</span>`;
  if(pi===0){
   const dz=$("deckZ0");if(dz)dz.onclick=()=>{if(UI.onDeck)UI.onDeck();};
@@ -3093,7 +3269,7 @@ function costHTML(s){
 }
 function ucHTML(u,cls){
  const ep=effPow(u),base=u.d.pow;
- const own=u.ctrl===0;
+ const own=u.ctrl===POV();
  const acc=hasAccel(u);                                  // 加速(先制)持ちか(付与含む)
  const enemyRow=homeRow(other(u.ctrl));
  const canSm=!u.frozen&&u.d.sm!=null&&(u.r===2||u.r===enemyRow); // 今このマスからスマッシュできる
@@ -3107,13 +3283,18 @@ function ucHTML(u,cls){
 }
 function renderBoard(){
  const bd=$("board");bd.innerHTML="";
- // 表示順: AIベース(r4扱い=bases[1]), r3, r2, r1, 自ベース(bases[0])
- const rows=[["base",1],["bt",3],["bt",2],["bt",1],["base",0]];
+ // pov基準で盤面を上下(および左右)反転。data-sq/data-base には実座標を保持するので、
+ // ハイライト/クリック(applyHighlights)は反転しても座標がズレない。
+ const pov=POV();
+ const eb=other(pov), ob=pov, eh=homeRow(other(pov)), oh=homeRow(pov);
+ // 表示順(上→下): 敵ベース, 敵軍, 中央, 自軍, 自ベース (pov視点)
+ const rows=[["base",eb],["bt",eh],["bt",2],["bt",oh],["base",ob]];
  for(const [kind,rr] of rows){
-  for(let c=0;c<3;c++){
+  for(let vc=0;vc<3;vc++){
+   const c=(pov===0?vc:2-vc); // pov=1(後攻)は左右も反転して180°回転にする
    const div=document.createElement("div");
    div.className="sq"+(kind==="base"?" baseSq":"")+(rr===2&&kind==="bt"?" centerRow":"");
-   let lbl=kind==="base"?(rr===0?"自ベース":"敵ベース"):(rr===2?"中央":(rr===1?"自軍":"敵軍"));
+   let lbl=kind==="base"?(rr===ob?"自ベース":"敵ベース"):(rr===2?"中央":(rr===oh?"自軍":"敵軍"));
    div.innerHTML=`<span class="rowlbl">${lbl}</span>`;
    if(kind==="base"){
     const b=G.bases[rr][c];
@@ -3132,17 +3313,40 @@ function renderBoard(){
  }
  applyHighlights();
 }
-function renderHand(){
- const p=G.pl[0],row=$("handRow");
- row.innerHTML=p.hand.map((no,i)=>{
-  const d=CARDS[no];
-  return `<div class="hc ${UI.playableHand&&UI.playableHand.has(i)?"playable":""}" data-hi="${i}" data-no="${no}" style="${artBg(no,d.col)}" title="${d.text||"(効果なし)"} ${d.type==="U"?"/ 移動:"+d.move:""}">
+function handCardHTML(no,i,playable){
+ const d=CARDS[no];
+ return `<div class="hc ${playable?"playable":""}" data-hi="${i}" data-no="${no}" style="${artBg(no,d.col)}" title="${d.text||"(効果なし)"} ${d.type==="U"?"/ 移動:"+d.move:""}">
    <div class="nm"><span class="cdot" style="background:var(--${d.col})"></span>${d.name}</div><div class="cost">${costHTML(d.play)}${d.type==="U"?` 移:${costHTML(d.move)}`:""}${d.type==="S"?` 《${d.timing}》`:""}</div>
    <div style="font-size:9px;opacity:.9;max-height:34px;overflow:hidden">${d.text}</div>
    <div class="typ">${d.type==="U"?d.race:d.type==="B"?"ベース":"ストラテジー"}</div>
    ${d.type==="U"?`<div class="ps">${d.pow}/SM${d.sm}</div>`:""}</div>`;
- }).join("");
+}
+function renderHand(){
+ const p=G.pl[POV()],row=$("handRow"); // pov(=自分)の手札のみ表示。相手の手札内容は出さない。
+ row.innerHTML=p.hand.map((no,i)=>handCardHTML(no,i,UI.playableHand&&UI.playableHand.has(i))).join("");
  row.querySelectorAll(".hc").forEach(el=>{el.onclick=()=>UI.onHand&&UI.onHand(+el.dataset.hi);});
+ renderReplayOppHand(); // 棋譜再生中のみ相手手札をオープン表示(観戦/検討用)
+}
+// 棋譜再生(終局後の観戦/検討)専用: 相手の手札を表向きで全公開する。
+// 表示は「REPLAY(再生セッション) かつ G._replay(再生フレーム描画中)」の両方が真のときだけ。
+// 進行中のオンライン対戦では REPLAY=null かつ G._replay が偽なので、相手手札は絶対に漏れない。
+function renderReplayOppHand(){
+ let top=document.getElementById("handRowTop");
+ const show=!!(REPLAY&&G&&G._replay); // 二重ガード: 再生セッション中の再生フレーム描画時のみ公開
+ if(!show){ if(top)top.style.display="none"; return; }
+ if(!top){
+  top=document.createElement("div");
+  top.id="handRowTop";
+  top.style.cssText="display:flex;gap:5px;flex-wrap:wrap;min-height:0;padding:5px;background:var(--panel);border:1px solid var(--gold);border-radius:8px;margin-bottom:4px";
+  const pb1=document.getElementById("pbar1");
+  if(pb1&&pb1.parentNode)pb1.parentNode.insertBefore(top,pb1.nextSibling);
+  else document.body.appendChild(top);
+ }
+ top.style.display="flex";
+ const opp=G.pl[other(POV())]; // 相手プレイヤー(POVでない側)
+ const lbl=`<div style="width:100%;font-size:10px;color:var(--gold);margin-bottom:2px">🎞 相手の手札(棋譜再生・全公開) ${opp.hand.length}枚</div>`;
+ // handRowTop 内のカードには handRow 用のクリック束縛が付かないため、閲覧専用(inert)になる
+ top.innerHTML=lbl+opp.hand.map((no,i)=>handCardHTML(no,i,false)).join("");
 }
 function renderStack(){
  const sb=$("stackBox");
@@ -3153,8 +3357,8 @@ function renderStack(){
  const one=(o,idx)=>{
   const it=o.it, no=it.no, card=(no!=null&&CARDS[no])?CARDS[no]:null;
   const owner=it.ctrl;
-  const ownLbl=owner==null?"":(owner===0?"自分":"相手");
-  const ownCls=owner===0?"mine":(owner===1?"foe":"");
+  const ownLbl=owner==null?"":(owner===POV()?"自分":"相手");
+  const ownCls=owner==null?"":(owner===POV()?"mine":"foe");
   const kind=card?(card.type==="U"?"ユニット":card.type==="B"?"ベース":card.type==="S"?"スペル":"能力"):(it.kind==="spell"?"スペル":"能力");
   const kico=kind==="ユニット"?"🃏":kind==="スペル"?"✦":"✨";
   const name=card?card.name:(it.label||it.kind||"効果");
@@ -3162,7 +3366,7 @@ function renderStack(){
   const col=card?card.col:null;
   // 対象(ユニット/ベース/エリア/数値)と配置先スクエアを表示。何を対象にしているか分かるように。
   const tgtLbl=(it.tgts&&it.tgts.length)?it.tgts.map(t=>t.label).filter(Boolean).join(" ・ "):"";
-  const sqLbl=(it.sq&&it.kind!=="move")?sqName(it.sq[0],it.sq[1],0):"";
+  const sqLbl=(it.sq&&it.kind!=="move")?sqName(it.sq[0],it.sq[1],POV()):"";
   const tgtLine=tgtLbl?`<div class="siTgt">🎯 対象: ${tgtLbl}</div>`:"";
   const sqLine=sqLbl?`<div class="siTgt">📍 ${sqLbl}</div>`:"";
   return `<div class="si ${ownCls}" ${no!=null?`data-no="${no}"`:""} style="${col?`border-left-color:var(--${col})`:""}">
@@ -3198,10 +3402,38 @@ function prompt2(msg,btns){
 function doConcede(){
  if(G.over){alert("この対局はすでに終了しています。");return;}
  if(!confirm("投了しますか？\nこの対局はあなたの負けになります。"))return;
+ if(ONLINE.active){
+  ONLINE.ended=true;
+  olWriteFinish(ONLINE.oppUid,"concede"); // 相手の勝ち
+  olReleaseWaiters();           // 相手決定の受信待ちを解放
+  olStopHeartbeat(); olClearTurnTimer(); olClearOppTimer(); olHideDcHud();
+  rtcCleanup(true); // 音声通話も終了(マイク停止・PC close・購読解除・UI撤去)
+  if(UI.concede){ try{UI.concede();}catch(e){} } // 自分のプロンプトを解決
+  G.over=true; G.winner=other(ONLINE.myIndex);
+  olRecordOwnStats({winnerUid:ONLINE.oppUid, reason:"concede"});
+  log("あなたは投了しました","imp"); renderAll();
+  return;
+ }
  if(UI.concede)UI.concede();
  else{G.over=true;G.winner=1;log("あなたは投了した","imp");renderAll();}
 }
 async function humanChoose(pi,acts,timing){
+ if(!ONLINE.active) return humanChooseCore(pi,acts,timing);
+ if(olIsCatchup() || pi!==ONLINE.myIndex){ // 相手の手番/復帰再生: プロンプトを出さず受信して適用
+  const v=await olRecvMove("act");
+  if(v==null)return {t:"pass"}; // 再生でデータが尽きた等: パス扱いで安全に畳む(G.overで各ループが停止)
+  return deserializeAction(v);
+ }
+ // 自分の手番: 内部の対象/ベース選択は行動オブジェクトに含めて丸ごと同期するため _inMyAction で個別同期を抑止
+ // 手番タイマー: 90秒放置なら自動で「優先権放棄(パス)」。連続3回で時間切れ負け(olRunMyDecision内)。
+ let a=await olRunMyDecision(()=>{
+  ONLINE._inMyAction=true;
+  return Promise.resolve(humanChooseCore(pi,acts,timing)).finally(()=>{ ONLINE._inMyAction=false; });
+ }, ()=>{ ONLINE._inMyAction=false; return {t:"pass"}; });
+ if(!ONLINE.ended) await olSendMove("act", serializeAction(a));
+ return a;
+}
+async function humanChooseCore(pi,acts,timing){
  const p=G.pl[pi];
  const passOnly=acts.length===1;
  if(passOnly&&$("autoPass").checked){await sleep(60);return acts[0];}
@@ -3277,7 +3509,7 @@ async function humanChoose(pi,acts,timing){
   function passOutcome(){
    const top=cur()[cur().length-1];
    if(top){
-    const who=top.ctrl===0?"あなた":"相手";
+    const who=top.ctrl===POV()?"あなた":"相手";
     if(top.kind==="move"){const u=units().find(x=>x.uid===top.uid);const dest=top.to?sqName(top.to[0],top.to[1],0):"";return {short:`${who}の移動(→${dest})を解決`,long:`このまま進むと、${who}の《${u?u.d.name:"ユニット"}》が ${dest} へ移動します${dest.startsWith("敵軍")&&who==="相手"?"(相手の敵陣=あなたの本陣へ侵入)":""}`};}
     if(top.kind==="spell"){return {short:`${who}の《${CARDS[top.no].name}》を解決`,long:`このまま進むと、${who}の《${CARDS[top.no].name}》が解決されます`};}
     if(top.kind==="abil"){return {short:`${who}の能力を解決`,long:`このまま進むと、${who}の《${CARDS[top.no].name}》の能力が解決されます`};}
@@ -3287,7 +3519,7 @@ async function humanChoose(pi,acts,timing){
    }
    // スタックが空 = フェイズ/ステップ終了
    if(G.battles.length){const b=G.battles[G.battles.length-1];return {short:`バトル第${b.step}ステップを進める`,long:`バトルの第${b.step}ステップを進めます`};}
-   if(G.ap===0)return {short:"メインフェイズを終了",long:"あなたのメインフェイズを終了します(この後スマッシュフェイズへ)"};
+   if(G.ap===POV())return {short:"メインフェイズを終了",long:"あなたのメインフェイズを終了します(この後スマッシュフェイズへ)"};
    return {short:"相手のメインフェイズを進める",long:"優先権を返し、相手のメインフェイズを進めます(相手が続けて行動する場合があります)"};
   }
   function passLabel(){return "▶ 優先権放棄";} // ルール用語で統一。結果(フェイズ終了/解決)はスタック帯・バトル表示で分かる
@@ -3306,7 +3538,16 @@ async function humanChoose(pi,acts,timing){
   reprompt();
  });
 }
-function humanPickSquare(pi,sqs,msg,cancelable,markAtk){
+async function humanPickSquare(pi,sqs,msg,cancelable,markAtk){
+ if(ONLINE.active && !ONLINE._inMyAction){
+  if(olIsCatchup() || pi!==ONLINE.myIndex){ return await olRecvMove("sq"); }
+  const r=await olRunMyDecision(()=>humanPickSquareCore(pi,sqs,msg,cancelable,markAtk),
+    ()=> cancelable? null : (sqs[0]||null)); // 放置: 取消可ならキャンセル、強制なら最初の合法マス
+  await olSendMove("sq",r); return r;
+ }
+ return humanPickSquareCore(pi,sqs,msg,cancelable,markAtk);
+}
+function humanPickSquareCore(pi,sqs,msg,cancelable,markAtk){
  return new Promise(res=>{
   UI.hl=sqs.map(sq=>({sq,atk:markAtk&&uAt(sq[0],sq[1])!=null,cb:()=>{UI.hl=[];res(sq);}}));
   const btns=[];
@@ -3316,12 +3557,25 @@ function humanPickSquare(pi,sqs,msg,cancelable,markAtk){
 }
 function humanPickBaseCol(cols){
  return new Promise(res=>{
-  UI.hl=cols.map(c=>({base:[0,c],cb:()=>{UI.hl=[];res(c);}}));
+  // ベース行の実座標は「設置するプレイヤーのベース索引」= POV()。
+  // 先攻/オフラインは0(従来通り)、オンライン後攻は1。data-base は実座標なので
+  // 反転表示でも自分側(下段)の正しいマスにハイライト/クリックが載る。
+  const br=POV();
+  UI.hl=cols.map(c=>({base:[br,c],cb:()=>{UI.hl=[];res(c);}}));
   prompt2("ベースを置くスクエアを選択",[["キャンセル",()=>{UI.hl=[];res(null);}]]);
   renderBoard();
  });
 }
-function humanPickHand(p,msg,optional){
+async function humanPickHand(p,msg,optional){
+ if(ONLINE.active && !ONLINE._inMyAction){
+  if(olIsCatchup() || p.i!==ONLINE.myIndex){ return await olRecvMove("hand"); }
+  const r=await olRunMyDecision(()=>humanPickHandCore(p,msg,optional),
+    ()=> optional? null : (p.hand.length?p.hand[0]:null)); // 放置: 任意ならスキップ、強制なら手札先頭
+  await olSendMove("hand",r); return r;
+ }
+ return humanPickHandCore(p,msg,optional);
+}
+function humanPickHandCore(p,msg,optional){
  return new Promise(res=>{
   UI.playableHand=new Set(p.hand.map((_,i)=>i));
   UI.onHand=hi=>{UI.playableHand=new Set();UI.onHand=null;res(p.hand[hi]);};
@@ -3330,7 +3584,15 @@ function humanPickHand(p,msg,optional){
   prompt2(msg,btns);renderHand();
  });
 }
-function humanPickSmash(p,cands){
+async function humanPickSmash(p,cands){
+ if(ONLINE.active && !ONLINE._inMyAction){
+  if(olIsCatchup() || p.i!==ONLINE.myIndex){ const uid=await olRecvMove("smash"); return uid==null?null:(cands.find(x=>x.uid===uid)||null); }
+  const r=await olRunMyDecision(()=>humanPickSmashCore(p,cands), ()=>null); // 放置: スマッシュせず終了(安全)
+  await olSendMove("smash", r?r.uid:null); return r;
+ }
+ return humanPickSmashCore(p,cands);
+}
+function humanPickSmashCore(p,cands){
  return new Promise(res=>{
   UI.hl=cands.map(u=>({uid:u.uid,cb:()=>{UI.hl=[];res(u);}}));
   prompt2(`スマッシュフェイズ: スマッシュするユニットをクリック(中央=SM値/敵軍=SM+1)`,[["終了",()=>{UI.hl=[];res(null);},true]]);
@@ -3338,6 +3600,21 @@ function humanPickSmash(p,cands){
  });
 }
 async function humanPickTargets(pi,cands,n,upTo,msg,optional){
+ if(ONLINE.active && !ONLINE._inMyAction){
+  if(olIsCatchup() || pi!==ONLINE.myIndex){
+   const v=await olRecvMove("tgt");
+   if(v==null) return null;
+   return v.map(d=>cands.find(c=>tgtMatch(c,d))).filter(Boolean);
+  }
+  // 放置: 任意/upToなら選ばず、強制なら先頭からn件を自動選択(ゲームが固まらない妥当な既定)
+  const autoTgt=()=> (optional||upTo)? [] : cands.slice(0,Math.min(n,cands.length));
+  const r=await olRunMyDecision(()=>humanPickTargetsCore(pi,cands,n,upTo,msg,optional), autoTgt);
+  await olSendMove("tgt", r==null?null:r.map(serializeTgt));
+  return r;
+ }
+ return humanPickTargetsCore(pi,cands,n,upTo,msg,optional);
+}
+async function humanPickTargetsCore(pi,cands,n,upTo,msg,optional){
  // 盤面ユニット対象はクリック、その他はモーダル
  const unitCands2=cands.filter(t=>t.kind==="unit");
  if(unitCands2.length===cands.length&&n===1){
@@ -3352,11 +3629,25 @@ async function humanPickTargets(pi,cands,n,upTo,msg,optional){
  // モーダル複数選択
  return await modalPick(msg,cands,n,upTo,optional);
 }
+/* 共有モーダル #mdl の装飾(タイトル#mT・フッター.ft・決定#mOk)を既定状態へ復元。
+   オンラインのホーム/ロビー/デッキ選択(showHome/olPanel/deckSelectScreen/showDeckManager)は
+   独自の内蔵ボタンを使うため .ft を display:none で隠す。対戦に入る前に確実に戻さないと、
+   ゲーム中の選択モーダル(modalPick/humanPay等)で「決定」ボタンが出ずハングする。 */
+function resetModalChrome(){
+ const mT=$("mT"); if(mT)mT.style.display="";
+ const bd=$("mB"); if(bd)bd.classList.remove("dsMode");
+ const mdl=$("mdl"); const ft=(mdl&&mdl.querySelector)?mdl.querySelector(".ft"):null; if(ft)ft.style.display="";
+ const ok=$("mOk"); if(ok){ok.style.display="";ok.textContent="決定";ok.disabled=false;}
+}
 function modalPick(title,cands,n,upTo,optional){
+ resetModalChrome();
  return new Promise(res=>{
   $("mT").textContent=title;
   const bd=$("mB");bd.innerHTML="";
   const sel=new Set();
+  let done=false;
+  const need=Math.min(n,cands.length);
+  const finish=()=>{if(done)return;done=true;$("ovl").classList.remove("on");res([...sel].map(i=>cands[i]));};
   cands.forEach((t,i)=>{
    const el=document.createElement("div");
    const cardNo=t.no!=null?t.no:(t.u?t.u.no:null);
@@ -3369,23 +3660,31 @@ function modalPick(title,cands,n,upTo,optional){
     el.innerHTML=`<b><span class="cdot" style="background:var(--${d.col})"></span>${d.name}</b><div class="tx">${costHTML(d.play)} ${d.type==="U"?`P${d.pow}/SM${d.sm}`:""}<br>${d.text}</div>`;
    }
    el.onclick=()=>{
+    if(done)return;
     if(sel.has(i)){sel.delete(i);el.classList.remove("sel");}
     else if(sel.size<n){sel.add(i);el.classList.add("sel");}
-    $("mOk").disabled=upTo?sel.size<1:sel.size!==Math.min(n,cands.length);
+    $("mOk").disabled=upTo?sel.size<1:sel.size!==need;
+    // 単数・必須の選択は選んだ時点で自動確定(盤面ユニットのクリック選択と挙動を統一)。
+    // モバイルで「決定」ボタンに気付けず/届かず、エネルギー破壊選択などで進行不能になるのを防ぐ。
+    if(!optional&&!upTo&&n===1&&sel.size===1)finish();
    };
    bd.appendChild(el);
   });
+  // フッター(.ft)と決定(#mOk)は resetModalChrome で既に可視化済みだが、念のため再保証する。
+  const _ft=($("mdl")&&$("mdl").querySelector)?$("mdl").querySelector(".ft"):null; if(_ft)_ft.style.display="";
+  $("mOk").style.display="";$("mOk").textContent="決定";
   $("mOk").disabled=true;
   $("mCancel").style.display=(optional||upTo)?"":"none";
-  $("mCancel").onclick=()=>{$("ovl").classList.remove("on");res(optional?[]:null);};
-  $("mOk").onclick=()=>{if($("mOk").disabled)return;$("ovl").classList.remove("on");res([...sel].map(i=>cands[i]));};
-  $("mN").textContent=upTo?`${n}枚まで選択`:`${Math.min(n,cands.length)}枚選択`;
+  $("mCancel").onclick=()=>{if(done)return;done=true;$("ovl").classList.remove("on");res(optional?[]:null);};
+  $("mOk").onclick=()=>{if(done||$("mOk").disabled)return;finish();};
+  $("mN").textContent=upTo?`${n}枚まで選択`:`${need}枚選択`;
   $("ovl").classList.add("on");
  });
 }
 function showGrave(pi){
  const p=G.pl[pi];
  if(!p.grave.length)return;
+ resetModalChrome(); // フッター(.ft)/決定(#mOk)がロビー等でdisplay:noneのままだと閉じるボタンが出ずハングするため復元
  $("mT").textContent=`${p.name}の墓地 (${p.grave.length}枚)`;
  const bd=$("mB");bd.innerHTML=p.grave.map(no=>{const d=CARDS[no];
   return `<div class="mc static" data-no="${no}" style="${artBg(no,d.col)}"><b><span class="cdot" style="background:var(--${d.col})"></span>${d.name}</b><div class="tx">${costHTML(d.play)} ${d.type==="U"?`P${d.pow}/SM${d.sm}`:""}<br>${d.text}</div></div>`;}).join("");
@@ -3396,6 +3695,7 @@ function showGrave(pi){
 function showEnergy(pi){
  const p=G.pl[pi];
  if(!p.energy.length)return;
+ resetModalChrome(); // 同上: 閉じるボタン(#mOk)を確実に可視化
  const rel=p.energy.filter(e=>!e.frozen).length, frz=p.energy.length-rel;
  $("mT").textContent=`${p.name}のエネルギーゾーン (計${p.energy.length}枚 ／ ▶リリース${rel}・⏸フリーズ${frz})`;
  const bd=$("mB");bd.innerHTML=p.energy.map(e=>{const no=e.no,d=CARDS[no];
@@ -3406,6 +3706,7 @@ function showEnergy(pi){
  $("ovl").classList.add("on");
 }
 function showModal(title,html,opts){
+ resetModalChrome(); // 汎用モーダル(終了/設定/ルール等)。フッター/決定ボタンをロビー由来のdisplay:noneから確実に復元
  $("mT").textContent=title;$("mB").innerHTML=html;$("mN").textContent="";
  $("mCancel").style.display="none";$("mOk").disabled=false;
  $("mOk").onclick=()=>$("ovl").classList.remove("on");
@@ -3540,8 +3841,31 @@ function showHelp(){
  <b style="color:var(--gold)">プランゾーン</b>: 無1で山札の1番上を公開→そこからプレイ可能。手札を消費しないので温存に強い。</div>`);
 }
 /* ============ デッキ構築・保存 ============ */
-function loadCustomDecks(){try{return JSON.parse(localStorage.getItem("d0CustomDecks")||"[]");}catch(e){return [];}}
-function saveCustomDecks(a){try{localStorage.setItem("d0CustomDecks",JSON.stringify(a));}catch(e){}}
+/* デッキ保存: ログイン時はFirestore(decks/{uid}.decks)、未ログイン時はlocalStorage。
+   同期API(loadCustomDecks/saveCustomDecks)との整合のため、メモリキャッシュ MYDECKS を介す。 */
+let MYDECKS=[];                       // ログイン時の権威データ(Firestoreの内容をミラー)
+let onDecksLoaded=null;               // 非同期でデッキが読み込まれた時の再描画フック(例: デッキ管理画面)
+function _lsReadDecks(){try{return JSON.parse(localStorage.getItem("d0CustomDecks")||"[]");}catch(e){return [];}}
+function _lsWriteDecks(a){try{localStorage.setItem("d0CustomDecks",JSON.stringify(a));}catch(e){}}
+MYDECKS=_lsReadDecks();               // 起動時はlocalStorageの内容で初期化
+function loadCustomDecks(){ return (typeof currentUser!=="undefined"&&currentUser)?(MYDECKS||[]):_lsReadDecks(); }
+function saveCustomDecks(a){
+ MYDECKS=a||[];
+ if(typeof currentUser!=="undefined"&&currentUser&&fbDB){
+  fbDB.collection("decks").doc(currentUser.uid).set({decks:MYDECKS}).catch(e=>console.error("デッキ保存失敗:",e));
+ }else{ _lsWriteDecks(MYDECKS); }
+}
+// ログイン/ログアウト時にデッキキャッシュを同期。ログイン初回でFirestoreに無ければlocalStorageから移行。
+async function syncDecksForUser(user){
+ if(!user||!fbDB){ MYDECKS=_lsReadDecks(); if(typeof onDecksLoaded==="function")onDecksLoaded(); return; }
+ try{
+  const ref=fbDB.collection("decks").doc(user.uid);
+  const snap=await ref.get();
+  if(snap.exists){ MYDECKS=(snap.data()&&snap.data().decks)||[]; }
+  else { const ls=_lsReadDecks(); MYDECKS=ls; if(ls&&ls.length){ await ref.set({decks:ls}); } } // 初回移行
+ }catch(e){ console.error("デッキ読込失敗:",e); MYDECKS=_lsReadDecks(); }
+ if(typeof onDecksLoaded==="function")onDecksLoaded();
+}
 // デッキ共有: リストをコード文字列に相互変換
 function deckToCode(dk){
  const l=dk.list.map(e=>typeof e==="number"?[e,2]:[e.no,e.n]);
@@ -3707,11 +4031,109 @@ function toggleLog(force){
  pr.classList.toggle("open", willOpen);
  const bd=$("logBackdrop"); if(bd) bd.classList.toggle("on", willOpen);
 }
-/* ============ 起動 ============ */
-async function boot(){
- layoutPanes();
- // スマホでは対戦記録パネルは初期状態で閉じる(右スライドアウト式のため)。PCは開いたまま。
- if(typeof window!=="undefined"&&window.matchMedia&&window.matchMedia("(max-width:820px)").matches){const pr=$("paneR");if(pr)pr.classList.remove("open");}
+/* ============ ホーム画面 (Phase3 M2) ============ */
+let HOME_OPEN=false;   // ホームを#ovlに表示中か(onAuthStateChangedでの再描画判定に使う)
+function showHome(){
+ HOME_OPEN=true; onDecksLoaded=null;
+ const bd=$("mB");
+ // deckSelect等が残したモーダル装飾をリセット
+ $("mT").style.display=""; bd.classList.remove("dsMode");
+ const ft=($("mdl")&&$("mdl").querySelector)?$("mdl").querySelector(".ft"):null; if(ft)ft.style.display="none";
+ $("mT").textContent="ディメンション・ゼロ オンライン";
+ if(!(typeof fbAuth!=="undefined"&&fbAuth)){
+  bd.innerHTML=`<div style="width:100%;text-align:center;padding:14px 8px;color:#e88a8a">認証に接続できていません(Firebase未初期化)。<br><small style="color:var(--dim)">AI対戦のみ利用できます。</small></div>
+   <div style="width:100%;display:flex;justify-content:center;margin-top:8px"><button id="homeAI" class="primary" style="font-size:15px;padding:12px 22px">🤖 AI対戦</button></div>`;
+  bd.querySelector("#homeAI").onclick=startAIMatch;
+  $("ovl").classList.add("on"); return;
+ }
+ if(!currentUser){
+  bd.innerHTML=`<div style="width:100%;text-align:center;padding:10px 8px">
+    <div style="font-size:14px;margin-bottom:14px">オンライン対戦にはログインが必要です。</div>
+    <button id="homeLogin" class="primary" style="font-size:16px;padding:14px 26px">🔑 Googleでログイン</button>
+    <div style="margin-top:16px;color:var(--dim);font-size:12px">— または —</div>
+    <div style="margin-top:10px"><button id="homeAI" style="font-size:13px;padding:9px 18px">🤖 AI対戦（ログイン不要）</button></div>
+   </div>`;
+  bd.querySelector("#homeLogin").onclick=signInGoogle;   // ログイン成功→onAuthStateChangedがshowHomeを再描画
+  bd.querySelector("#homeAI").onclick=startAIMatch;
+  $("ovl").classList.add("on"); return;
+ }
+ const nick=(currentProfile&&currentProfile.nickname)||currentUser.displayName||"プレイヤー";
+ bd.innerHTML=`<div style="width:100%;text-align:center;padding:6px 8px 14px">
+    <div style="font-size:15px;color:var(--gold);margin-bottom:4px">ようこそ、<b>${escapeHTML(nick)}</b> さん</div>
+    <div style="font-size:13px;color:var(--dim);margin-bottom:14px">対戦成績: <b style="color:var(--gold)">${olStatsLabel()}</b> <button id="homeStats" style="font-size:11px;padding:3px 9px;margin-left:6px">履歴</button></div>
+    <div id="homeResumeWrap"></div>
+    <div style="display:flex;flex-direction:column;gap:12px;max-width:320px;margin:0 auto">
+     <button id="homeOnline" class="primary" style="font-size:15px;padding:14px">🌐 オンライン対戦</button>
+     <button id="homeDecks" style="font-size:15px;padding:14px">🃏 デッキ管理</button>
+     <button id="homeAI" style="font-size:15px;padding:14px">🤖 AI対戦</button>
+    </div>
+   </div>`;
+ bd.querySelector("#homeOnline").onclick=showLobby;
+ bd.querySelector("#homeDecks").onclick=showDeckManager;
+ bd.querySelector("#homeAI").onclick=startAIMatch;
+ bd.querySelector("#homeStats").onclick=showStatsHistory;
+ $("ovl").classList.add("on");
+ // 未終局の自分の対戦があれば「▶ 対戦に復帰」を表示(非同期)
+ olFindResumable().then(res=>{
+  if(!res||!HOME_OPEN)return;
+  const wrap=$("homeResumeWrap"); if(!wrap)return;
+  const oppUid=(res.d.uids||[]).find(u=>u!==currentUser.uid);
+  const oppNick=(res.d.players&&res.d.players[oppUid]&&res.d.players[oppUid].nickname)||"相手";
+  wrap.innerHTML=`<div style="max-width:320px;margin:0 auto 12px"><button id="homeResume" class="primary" style="width:100%;font-size:15px;padding:13px;background:#2a5a2a;border-color:#3a7a3a">▶ 対戦に復帰（vs ${escapeHTML(oppNick)}）</button></div>`;
+  const rb=$("homeResume"); if(rb)rb.onclick=()=>{ rb.disabled=true; rb.textContent="復帰中…"; olResumeMatch(res.id); };
+ }).catch(()=>{});
+}
+/* デッキ管理: 自分のデッキ(+プリセット)の新規作成/編集/複製/共有/削除。deckSelectScreenのCSSを流用。 */
+function showDeckManager(){
+ HOME_OPEN=false;
+ onDecksLoaded=showDeckManager;   // 非同期でデッキが読み込まれたら開き直す
+ const customs=loadCustomDecks();
+ const all=[...DECKS.map(d=>({...d,official:d.official!==false,preset:true})),...customs.map(d=>({...d,official:false,preset:false}))];
+ const bd=$("mB");
+ $("mT").style.display="none"; bd.classList.add("dsMode");
+ const ft=($("mdl")&&$("mdl").querySelector)?$("mdl").querySelector(".ft"):null; if(ft)ft.style.display="none";
+ function cleanup(){ $("mT").style.display=""; bd.classList.remove("dsMode"); if(ft)ft.style.display=""; onDecksLoaded=null; }
+ // 編集/新規/複製: 一旦モーダル装飾を戻してopenBuilderを開き、完了後にデッキ管理へ戻る。
+ function edit(base){ cleanup(); $("ovl").classList.remove("on"); openBuilder(base).then(showDeckManager); }
+ bd.innerHTML=`<div class="dsHead">
+    <div class="dsHeadRow"><b class="dsTitle">デッキ管理</b><span style="flex:1"></span>
+     <button id="dmNew" class="primary">＋新しいデッキ</button><button id="dmImport">コード読込</button><button id="dmBack">← ホーム</button></div>
+    <div class="dsHeadRow" style="margin-top:5px"><span class="dsStatus">保存先: <b style="color:var(--gold)">${(typeof currentUser!=="undefined"&&currentUser)?"アカウント(クラウド)":"この端末"}</b> ／ 自作 <b>${customs.length}</b> 個</span></div>
+   </div><div class="dsList" id="dmList"></div>`;
+ bd.querySelector("#dmNew").onclick=()=>edit(null);
+ bd.querySelector("#dmImport").onclick=()=>{const dk=importDeckByCode();if(dk)showDeckManager();};
+ bd.querySelector("#dmBack").onclick=()=>{cleanup();showHome();};
+ const list=bd.querySelector("#dmList");
+ all.forEach(dk=>{
+  const row=document.createElement("div");
+  row.className="deckRow";
+  const tag=dk.preset?(dk.official?"／公式":"／オリジナル"):"／自作";
+  const rep=[...new Set((dk.list||[]).map(e=>typeof e==="number"?e:e.no))].filter(no=>CARDS[no])
+    .sort((a,b)=>((CARDS[b].type==="U")-(CARDS[a].type==="U"))||(totalCost(b)-totalCost(a))||((CARDS[b].pow||0)-(CARDS[a].pow||0)))
+    .slice(0,3);
+  const artHTML=`<div class="deckArt" aria-hidden="true">${rep.map(no=>`<div class="dcard" style="background-image:url('art/${no}.png')"></div>`).join("")}</div>`;
+  row.innerHTML=`${artHTML}<div class="deckInfo"><b>${dk.name}</b> <small style="color:var(--dim)">${dk.colors||""} ${tag}</small><br><small style="color:var(--dim)">${dk.desc||""}</small></div>`;
+  const btns=document.createElement("div");btns.className="deckBtns";
+  const bs=document.createElement("button");bs.textContent="共有";bs.title="デッキコードをコピー";bs.onclick=()=>shareDeck(dk);
+  const bd2=document.createElement("button");bd2.textContent="複製して編集";bd2.onclick=()=>edit({...dk,name:dk.name+" コピー",official:false,preset:false});
+  if(dk.preset){
+   btns.appendChild(bs);btns.appendChild(bd2);
+  }else{
+   const be=document.createElement("button");be.textContent="編集";be.onclick=()=>edit(dk);
+   const bx=document.createElement("button");bx.textContent="削除";bx.onclick=()=>{if(!confirm(`「${dk.name}」を削除しますか?`))return;saveCustomDecks(loadCustomDecks().filter(x=>x.name!==dk.name));showDeckManager();};
+   btns.appendChild(be);btns.appendChild(bd2);btns.appendChild(bs);btns.appendChild(bx);
+  }
+  row.appendChild(btns);
+  const info=row.querySelector(".deckInfo");
+  if(info)info.onclick=()=>{const wasOpen=row.classList.contains("open");bd.querySelectorAll(".deckRow.open").forEach(r=>r.classList.remove("open"));if(!wasOpen)row.classList.add("open");};
+  list.appendChild(row);
+ });
+ $("ovl").classList.add("on");
+}
+/* AI対戦(Phase2フロー): デッキ選択 → newGame → runGame。ゲーム終了後は「新しいゲーム」でホームに戻る(location.reload)。 */
+async function startAIMatch(){
+ HOME_OPEN=false; onDecksLoaded=null;
+ $("ovl").classList.remove("on");
  while(true){
   const sel=await deckSelectScreen();
   if("builder" in sel){await openBuilder(sel.builder);continue;}
@@ -3721,6 +4143,881 @@ async function boot(){
   runGame();
   return;
  }
+}
+/* ============ オンライン ロビー/マッチング (Phase3 M3, 共有シード方式) ============
+   Firestore設計:
+    queue/{auto}  : {uid,nickname,deck:{name,list},createdAt, matchId?}  公開マッチ待機列
+    rooms/{CODE}  : {hostUid,hostNickname,hostDeck:{name,list},createdAt,status:"waiting"|"matched",matchId?,guestUid?}  合言葉ルーム
+    matches/{id}  : {uids:[a,b],players:{<uid>:{nickname,deck:{name,list}}},seed(32bit),firstUid,status:"ready",createdAt}
+   成立フロー: 参加側(拾う/合言葉参加)が matches を1回だけ作成しseed/firstUidを確定。相手待機ドキュメントに
+   matchId を書き込み、相手は onSnapshot でそれを検知して同じ matches/{id} を購読する。両者 matches を
+   onSnapshot 購読しマッチ成立画面を表示。実対戦(決定論エンジン同期再生)は M4 で実装予定。
+   二重マッチ対策: 拾う側は runTransaction 内で候補ドキュメントを再取得し matchId 未設定を確認してから確定。 */
+let OL={deck:null, unsub:null, matchUnsub:null, queueRef:null, roomRef:null};
+function olNick(){ return (currentProfile&&currentProfile.nickname)||(currentUser&&currentUser.displayName)||"プレイヤー"; }
+function olTS(){ return firebase.firestore.FieldValue.serverTimestamp(); }
+function olPanel(bodyHTML){
+ HOME_OPEN=false;
+ const bd=$("mB");
+ $("mT").style.display=""; bd.classList.remove("dsMode");
+ const ft=($("mdl")&&$("mdl").querySelector)?$("mdl").querySelector(".ft"):null; if(ft)ft.style.display="none";
+ $("mT").textContent="ディメンション・ゼロ オンライン対戦";
+ bd.innerHTML=bodyHTML;
+ $("ovl").classList.add("on");
+ return bd;
+}
+function olCleanupListeners(){
+ try{ if(OL.unsub){OL.unsub();} }catch(e){}
+ try{ if(OL.matchUnsub){OL.matchUnsub();} }catch(e){}
+ OL.unsub=null; OL.matchUnsub=null;
+}
+async function olCleanupDocs(){
+ try{ if(OL.queueRef){ await OL.queueRef.delete(); } }catch(e){ console.error("queue掃除失敗:",e); }
+ OL.queueRef=null;
+ try{ if(OL.roomRef){ await OL.roomRef.delete(); } }catch(e){ console.error("room掃除失敗:",e); }
+ OL.roomRef=null;
+}
+/* ロビー入口: ログイン必須 + デッキ選択へ */
+function showLobby(){
+ HOME_OPEN=false; onDecksLoaded=null;
+ if(!(typeof fbAuth!=="undefined"&&fbAuth)||!(typeof fbDB!=="undefined"&&fbDB)){
+  alert("オンライン対戦はサーバーに接続できません(Firebase未初期化)。"); showHome(); return;
+ }
+ if(!currentUser){ alert("オンライン対戦にはログインが必要です。"); showHome(); return; }
+ OL.deck=null;
+ olRenderDeckSelect();
+}
+/* 持ち込みデッキ選択 */
+function olRenderDeckSelect(){
+ olCleanupListeners();
+ const decks=loadCustomDecks();
+ if(!decks||!decks.length){
+  alert("オンライン対戦に持ち込むデッキがありません。デッキ管理で作成してください。");
+  showDeckManager(); return;
+ }
+ const bd=olPanel(`<div style="width:100%;padding:6px 4px 12px">
+    <div style="text-align:center;font-size:14px;margin-bottom:12px">持ち込むデッキを選択してください</div>
+    <div id="olDeckList" style="display:flex;flex-direction:column;gap:8px;max-width:420px;margin:0 auto"></div>
+    <div style="text-align:center;margin-top:14px"><button id="olDeckBack" style="font-size:13px;padding:10px 20px">← ホームに戻る</button></div>
+   </div>`);
+ const list=bd.querySelector("#olDeckList");
+ decks.forEach(dk=>{
+  const b=document.createElement("button");
+  b.style.cssText="font-size:14px;padding:12px;text-align:left";
+  b.innerHTML=`<b>${escapeHTML(dk.name)}</b> <small style="color:var(--dim)">${escapeHTML(dk.colors||"")}</small>`;
+  b.onclick=()=>{ OL.deck={name:dk.name, list:dk.list, colors:dk.colors}; olRenderMenu(); };
+  list.appendChild(b);
+ });
+ bd.querySelector("#olDeckBack").onclick=()=>showHome();
+}
+/* ロビー メニュー */
+function olRenderMenu(){
+ olCleanupListeners();
+ const dk=OL.deck;
+ const bd=olPanel(`<div style="width:100%;text-align:center;padding:6px 8px 14px">
+    <div style="font-size:13px;color:var(--dim);margin-bottom:4px">持ち込みデッキ</div>
+    <div style="font-size:15px;color:var(--gold);margin-bottom:16px"><b>${escapeHTML(dk?dk.name:"未選択")}</b> <button id="olChgDeck" style="font-size:12px;padding:4px 10px;margin-left:8px">変更</button></div>
+    <div style="display:flex;flex-direction:column;gap:12px;max-width:340px;margin:0 auto">
+      <button id="olPublic" class="primary" style="font-size:15px;padding:14px">🔎 公開マッチを探す</button>
+      <button id="olCreate" style="font-size:15px;padding:14px">🔒 プライベート作成（合言葉）</button>
+      <button id="olJoin" style="font-size:15px;padding:14px">🔑 合言葉で参加</button>
+      <button id="olHome" style="font-size:13px;padding:10px;margin-top:6px">← ホームに戻る</button>
+    </div></div>`);
+ bd.querySelector("#olChgDeck").onclick=olRenderDeckSelect;
+ bd.querySelector("#olPublic").onclick=olFindPublic;
+ bd.querySelector("#olCreate").onclick=olCreatePrivate;
+ bd.querySelector("#olJoin").onclick=olRenderJoin;
+ bd.querySelector("#olHome").onclick=olExit;
+}
+async function olExit(){
+ olCleanupListeners();
+ rtcCleanup(true); // 退出時に音声通話も終了(マイク停止・PC close・UI撤去)
+ await olCleanupDocs();
+ OL.deck=null;
+ showHome();
+}
+function olRenderWaiting(msg, cancelFn){
+ const bd=olPanel(`<div style="width:100%;text-align:center;padding:22px 8px">
+    <div style="font-size:15px;margin-bottom:18px">${escapeHTML(msg)}</div>
+    <div style="font-size:28px;margin-bottom:20px">⏳</div>
+    <button id="olCancel" style="font-size:14px;padding:10px 22px">キャンセル</button></div>`);
+ bd.querySelector("#olCancel").onclick=cancelFn;
+}
+async function olCopyText(txt, btn){
+ try{ await navigator.clipboard.writeText(txt); }
+ catch(e){ const ta=document.createElement("textarea");ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand("copy");ta.remove(); }
+ if(btn){ const t=btn.textContent; btn.textContent="✓コピーしました"; setTimeout(()=>{btn.textContent=t;},1500); }
+}
+/* --- 公開マッチ(queue + トランザクション) --- */
+async function olFindPublic(){
+ olRenderWaiting("対戦相手を探しています…", olCancelPublic);
+ const meUid=currentUser.uid;
+ try{
+  const qs=await fbDB.collection("queue").limit(10).get();
+  let matchId=null;
+  for(const doc of qs.docs){
+   const d=doc.data()||{};
+   if(d.uid===meUid || d.matchId) continue;
+   try{
+    matchId=await fbDB.runTransaction(async tx=>{
+     const s=await tx.get(doc.ref);
+     if(!s.exists) return null;
+     const dd=s.data()||{};
+     if(dd.matchId || dd.uid===meUid) return null;   // 既に他とマッチ済/自分 → スキップ
+     const mid=fbDB.collection("matches").doc().id;
+     const seed=Math.floor(Math.random()*0xffffffff);
+     const uids=[dd.uid, meUid];
+     const firstUid=uids[Math.floor(Math.random()*uids.length)];
+     const players={};
+     players[dd.uid]={nickname:dd.nickname||"相手", deck:dd.deck||null};
+     players[meUid]={nickname:olNick(), deck:{name:OL.deck.name,list:OL.deck.list}};
+     tx.set(fbDB.collection("matches").doc(mid), {uids, players, seed, firstUid, status:"ready", createdAt:olTS()});
+     tx.update(doc.ref, {matchId:mid});   // 相手待機ドキュメントに成立通知
+     return mid;
+    });
+   }catch(e){ console.error("マッチトランザクション失敗:",e); matchId=null; }
+   if(matchId) break;
+  }
+  if(matchId){ olGoMatch(matchId); return; }
+  // 相手なし → 自分を待機列に登録し、拾われる(matchId付与)のを待つ
+  const ref=fbDB.collection("queue").doc();
+  OL.queueRef=ref;
+  await ref.set({uid:meUid, nickname:olNick(), deck:{name:OL.deck.name,list:OL.deck.list}, createdAt:olTS()});
+  OL.unsub=ref.onSnapshot(snap=>{
+   if(!snap.exists) return;
+   const d=snap.data()||{};
+   if(d.matchId){
+    const mid=d.matchId;
+    olCleanupListeners();
+    ref.delete().catch(e=>console.error("queue自己削除失敗:",e));
+    OL.queueRef=null;
+    olGoMatch(mid);
+   }
+  }, err=>console.error("queue購読エラー:",err));
+ }catch(e){
+  console.error("公開マッチ失敗:",e);
+  alert("マッチングに失敗しました: "+((e&&e.message)||e));
+  olRenderMenu();
+ }
+}
+async function olCancelPublic(){
+ olCleanupListeners();
+ try{ if(OL.queueRef){ await OL.queueRef.delete(); OL.queueRef=null; } }catch(e){ console.error("queueキャンセル失敗:",e); }
+ olRenderMenu();
+}
+/* --- プライベート(合言葉 / rooms) --- */
+function olGenCode(){
+ const chars="ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // 紛らわしい0/O/1/Iを除外
+ let s=""; for(let i=0;i<6;i++)s+=chars[Math.floor(Math.random()*chars.length)];
+ return s;
+}
+async function olCreatePrivate(){
+ const code=olGenCode();
+ const ref=fbDB.collection("rooms").doc(code);
+ try{
+  await ref.set({hostUid:currentUser.uid, hostNickname:olNick(), hostDeck:{name:OL.deck.name,list:OL.deck.list}, createdAt:olTS(), status:"waiting"});
+ }catch(e){ console.error("ルーム作成失敗:",e); alert("ルーム作成に失敗しました。"); olRenderMenu(); return; }
+ OL.roomRef=ref;
+ const bd=olPanel(`<div style="width:100%;text-align:center;padding:16px 8px">
+    <div style="font-size:14px;margin-bottom:10px">プライベートルームを作成しました。<br>この合言葉を相手に伝えてください。</div>
+    <div style="font-size:30px;letter-spacing:6px;color:var(--gold);font-weight:bold;margin:12px 0">${escapeHTML(code)}</div>
+    <button id="olCopy" style="font-size:13px;padding:8px 18px;margin-bottom:18px">📋 合言葉をコピー</button>
+    <div style="font-size:13px;color:var(--dim);margin-bottom:6px">相手の参加を待っています… ⏳</div>
+    <div><button id="olRoomCancel" style="font-size:14px;padding:10px 22px;margin-top:8px">キャンセル</button></div></div>`);
+ bd.querySelector("#olCopy").onclick=(ev)=>olCopyText(code, ev.currentTarget);
+ bd.querySelector("#olRoomCancel").onclick=olCancelRoom;
+ OL.unsub=ref.onSnapshot(snap=>{
+  if(!snap.exists) return;
+  const d=snap.data()||{};
+  if(d.status==="matched" && d.matchId){
+   const mid=d.matchId;
+   olCleanupListeners();
+   ref.delete().catch(e=>console.error("room削除失敗:",e));
+   OL.roomRef=null;
+   olGoMatch(mid);
+  }
+ }, err=>console.error("room購読エラー:",err));
+}
+async function olCancelRoom(){
+ olCleanupListeners();
+ try{ if(OL.roomRef){ await OL.roomRef.delete(); OL.roomRef=null; } }catch(e){ console.error("roomキャンセル失敗:",e); }
+ olRenderMenu();
+}
+function olRenderJoin(){
+ olCleanupListeners();
+ const bd=olPanel(`<div style="width:100%;text-align:center;padding:16px 8px">
+    <div style="font-size:14px;margin-bottom:14px">相手から聞いた合言葉(6桁)を入力してください。</div>
+    <input id="olCodeIn" maxlength="6" placeholder="ABC123" style="font-size:22px;letter-spacing:5px;text-align:center;text-transform:uppercase;padding:10px 12px;width:180px;border-radius:8px;border:1px solid #555;background:#1c1c22;color:#fff">
+    <div style="margin-top:18px;display:flex;gap:10px;justify-content:center">
+      <button id="olJoinGo" class="primary" style="font-size:14px;padding:10px 22px">参加する</button>
+      <button id="olJoinBack" style="font-size:14px;padding:10px 22px">戻る</button></div></div>`);
+ const inp=bd.querySelector("#olCodeIn");
+ bd.querySelector("#olJoinGo").onclick=()=>olJoinPrivateDo(inp.value);
+ inp.onkeydown=(e)=>{ if(e.key==="Enter")olJoinPrivateDo(inp.value); };
+ bd.querySelector("#olJoinBack").onclick=olRenderMenu;
+ setTimeout(()=>{ try{inp.focus();}catch(e){} },50);
+}
+async function olJoinPrivateDo(codeRaw){
+ const code=(codeRaw||"").trim().toUpperCase();
+ if(!code){ alert("合言葉を入力してください。"); return; }
+ const meUid=currentUser.uid;
+ const ref=fbDB.collection("rooms").doc(code);
+ olRenderWaiting("ルームに参加しています…", olRenderMenu);
+ try{
+  const mid=await fbDB.runTransaction(async tx=>{
+   const s=await tx.get(ref);
+   if(!s.exists) throw new Error("その合言葉のルームは見つかりません。");
+   const d=s.data()||{};
+   if(d.status!=="waiting") throw new Error("そのルームは既に対戦中または終了しています。");
+   if(d.hostUid===meUid) throw new Error("自分が作成したルームには参加できません。");
+   const m=fbDB.collection("matches").doc().id;
+   const seed=Math.floor(Math.random()*0xffffffff);
+   const uids=[d.hostUid, meUid];
+   const firstUid=uids[Math.floor(Math.random()*uids.length)];
+   const players={};
+   players[d.hostUid]={nickname:d.hostNickname||"相手", deck:d.hostDeck||null};
+   players[meUid]={nickname:olNick(), deck:{name:OL.deck.name,list:OL.deck.list}};
+   tx.set(fbDB.collection("matches").doc(m), {uids, players, seed, firstUid, status:"ready", createdAt:olTS()});
+   tx.update(ref, {status:"matched", matchId:m, guestUid:meUid});
+   return m;
+  });
+  olGoMatch(mid);
+ }catch(e){
+  console.error("ルーム参加失敗:",e);
+  alert((e&&e.message)||"ルーム参加に失敗しました。");
+  olRenderMenu();
+ }
+}
+/* --- マッチ成立画面 (両者が matches/{id} を購読) --- */
+function olGoMatch(matchId){
+ olCleanupListeners();
+ OL.matchUnsub=fbDB.collection("matches").doc(matchId).onSnapshot(snap=>{
+  if(!snap.exists) return;
+  olRenderMatch(matchId, snap.data()||{});
+ }, err=>{ console.error("match購読エラー:",err); alert("対戦情報の取得に失敗しました。"); });
+}
+function olRenderMatch(matchId, d){
+ const meUid=currentUser.uid;
+ const oppUid=(d.uids||[]).find(u=>u!==meUid);
+ const opp=(d.players&&oppUid&&d.players[oppUid])||{};
+ const amFirst=d.firstUid===meUid;
+ const bd=olPanel(`<div style="width:100%;text-align:center;padding:14px 8px">
+    <div style="font-size:20px;color:var(--gold);font-weight:bold;margin-bottom:16px">⚔️ マッチ成立</div>
+    <div style="font-size:14px;margin-bottom:8px">対戦相手: <b>${escapeHTML(opp.nickname||"相手")}</b></div>
+    <div style="font-size:13px;color:var(--dim);margin-bottom:14px">相手デッキ: ${escapeHTML((opp.deck&&opp.deck.name)||"?")}</div>
+    <div style="font-size:16px;margin-bottom:18px">あなたは <b style="color:${amFirst?"#8fd3ff":"#ffcf8f"}">${amFirst?"先攻":"後攻"}</b> です</div>
+    <div style="display:flex;flex-direction:column;gap:10px;max-width:320px;margin:0 auto">
+      <button id="olStart" class="primary" style="font-size:15px;padding:14px">▶ 対戦開始</button>
+      <button id="olBackLobby" style="font-size:13px;padding:10px">← ロビーに戻る</button>
+    </div>
+    <div style="font-size:11px;color:var(--dim);margin-top:12px">seed: ${d.seed} ／ match: ${escapeHTML(matchId)}</div></div>`);
+ bd.querySelector("#olBackLobby").onclick=()=>{ olCleanupListeners(); olRenderMenu(); };
+ const startBtn=bd.querySelector("#olStart");
+ if(startBtn)startBtn.onclick=()=>{ startBtn.disabled=true; startBtn.textContent="対戦準備中..."; olStartMatch(matchId,d); };
+}
+/* --- M4: 対戦開始・同期ドライバ --- */
+function olEndCleanup(){
+ try{ if(ONLINE.movesUnsub)ONLINE.movesUnsub(); }catch(e){}
+ try{ if(ONLINE.matchUnsub)ONLINE.matchUnsub(); }catch(e){}
+ ONLINE.movesUnsub=null; ONLINE.matchUnsub=null;
+ ONLINE.active=false;
+ olStopHeartbeat(); olClearTurnTimer(); olClearOppTimer(); olHideDcHud();
+ rtcCleanup(true); // 音声通話の全リソース解放(マイク開きっぱなし防止)
+}
+function olWriteFinish(winnerUid,reason){
+ if(ONLINE._finishWritten)return;
+ ONLINE._finishWritten=true;
+ try{ ONLINE.matchRef.set({status:"finished", winnerUid:winnerUid||null, reason:reason||"normal", endedAt:olTS()},{merge:true}); }
+ catch(e){ console.error("finish書込失敗",e); }
+}
+// match購読で終局/投了/切断・プレゼンスを検知(相手側の終了を反映)
+function olOnMatchSnap(d){
+ if(!d||!ONLINE.active)return;
+ // プレゼンス(相手のlastSeen)。更新を検知したら「最後に見た時刻」をローカル基準で刻む(時計ずれ回避)
+ try{
+  const pr=d.presence&&d.presence[ONLINE.oppUid];
+  if(pr){ const ms=pr.toMillis?pr.toMillis():(pr.seconds?pr.seconds*1000:0);
+   if(ms && ms!==ONLINE._oppPresMs){ ONLINE._oppPresMs=ms; ONLINE.oppSeenAt=Date.now(); if(ONLINE._dcActive)olHideDcHud(); } }
+ }catch(e){}
+ if(d.status==="finished" && !ONLINE.ended){
+  ONLINE.ended=true; ONLINE._finishWritten=true;
+  G.over=true;
+  G.winner = d.winnerUid==null ? null : (d.winnerUid===ONLINE.myUid?ONLINE.myIndex:other(ONLINE.myIndex));
+  const rsn=d.reason==="disconnect"?"（相手の切断）":d.reason==="timeout"?"（時間切れ）":"（相手の投了または終局）";
+  log("対局が終了しました"+rsn,"imp");
+  olReleaseWaiters();
+  if(UI.concede){ try{UI.concede();}catch(e){} }
+  olClearPromptUI();          // 自分の選択モーダル/プロンプトが開いたままでも畳む
+  olStopHeartbeat(); olClearTurnTimer(); olClearOppTimer(); olHideDcHud();
+  rtcCleanup(true);           // 相手切断/終局で音声通話も自動終了
+  olRecordOwnStats(d);        // 対戦成績を記録(自分のwins/losses+履歴。二重加算は_statsRecordedでガード)
+  renderAll();
+ }
+}
+async function olStartMatch(matchId,d){
+ if(ONLINE.active)return;
+ const meUid=currentUser&&currentUser.uid;
+ const fu=d.firstUid, ou=(d.uids||[]).find(u=>u!==fu);
+ if(!meUid||!fu||!ou||!d.players||!d.players[fu]||!d.players[ou]){ alert("対戦データが不完全です。ロビーに戻ります。"); olCleanupListeners(); olRenderMenu(); return; }
+ const deck0=d.players[fu].deck, deck1=d.players[ou].deck; // deck0=先攻(firstUid), deck1=後攻
+ if(!deck0||!deck1||!deck0.list||!deck1.list){ alert("デッキ情報が取得できませんでした。"); olCleanupListeners(); olRenderMenu(); return; }
+ olCleanupListeners(); // ロビー/マッチ成立画面の購読を停止
+ // ONLINE 同期状態を初期化
+ ONLINE.active=true; ONLINE.ended=false; ONLINE._finishWritten=false; ONLINE._inMyAction=false;
+ ONLINE.myUid=meUid; ONLINE.myIndex=(meUid===fu)?0:1; ONLINE.oppUid=(meUid===fu)?ou:fu;
+ ONLINE.matchId=matchId; ONLINE.seq=0; ONLINE.inbox={}; ONLINE.waiters={};
+ ONLINE.replayUntil=0; ONLINE.consecTimeouts=0; ONLINE._statsRecorded=false;
+ ONLINE.oppSeenAt=0; ONLINE._oppPresMs=0; ONLINE._dcActive=false;
+ ONLINE.matchRef=fbDB.collection("matches").doc(matchId);
+ ONLINE.movesRef=ONLINE.matchRef.collection("moves");
+ ONLINE.oppNick=(d.players[ONLINE.oppUid]&&d.players[ONLINE.oppUid].nickname)||"相手";
+ // ステータスを playing に(復帰検出のクエリ対象)。プレゼンス初期値も書く。
+ try{ ONLINE.matchRef.set({status:"playing", presence:{[meUid]:olTS()}},{merge:true}); }catch(e){}
+ // moves購読: 相手(および自分)の決定をinboxへ届ける
+ ONLINE.movesUnsub=ONLINE.movesRef.onSnapshot(snap=>{
+  snap.docChanges().forEach(ch=>{ if(ch.type==="removed")return; olDeliver(ch.doc.data()); });
+ }, err=>{ console.error("moves購読エラー",err); olNet("同期通信のエラーが発生しました。"); });
+ // match購読: 投了/終局/プレゼンスの検知
+ ONLINE.matchUnsub=ONLINE.matchRef.onSnapshot(snap=>{ if(snap&&snap.exists) olOnMatchSnap(snap.data()); });
+ olStartHeartbeat(); // 生存時刻を定期送信＋相手の切断を監視
+ // 画面を閉じてゲーム開始(両者が「対戦開始」を押すと各自ローカルで同一初期盤面を構築)
+ // ロビー/マッチ成立画面(olPanel)は .ft(決定ボタン)を隠すため、対戦に入る前に必ず既定へ復元。
+ // これを怠るとゲーム中の選択モーダル(エネルギー破壊選択など)で「決定」が出ずハングする。
+ resetModalChrome();
+ $("ovl").classList.remove("on"); HOME_OPEN=false;
+ const names=[ (d.players[fu].nickname||"先攻"), (d.players[ou].nickname||"後攻") ];
+ try{
+  newGame(deck0, deck1, {seed:d.seed, first:0, online:true, names});
+ }catch(e){ console.error("newGame失敗",e); alert("対戦の初期化に失敗しました: "+(e&&e.message||e)); olEndCleanup(); olRenderMenu(); return; }
+ log(`=== オンライン対戦開始: あなたは ${ONLINE.myIndex===0?"先攻":"後攻"}（${names[ONLINE.myIndex]}）／ 相手 ${ONLINE.oppNick} ===`,"imp");
+ log(`--- ${G.pl[G.ap].name}のターン1 ---`,"imp");
+ renderAll();
+ rtcInitUI(); // 音声チャットのバーを表示(既定OFF。ユーザーが「通話」を押すと接続開始)
+ olRunGame();
+}
+async function olRunGame(){
+ try{ await runGame(); }
+ catch(e){ console.error("オンライン対戦ループ異常",e); log("⚠ 対戦処理エラー: "+(e&&e.message||e),"imp"); if(!G.over){ G.over=true; endGame(); } }
+}
+/* ===== 手番タイマー・切断監視・成績のためのHUD(動的生成) ===== */
+function olHudEl(){
+ let h=$("olHud");
+ if(!h){
+  h=document.createElement("div"); h.id="olHud";
+  h.style.cssText="position:fixed;top:44px;left:50%;transform:translateX(-50%);z-index:60;display:flex;flex-direction:column;gap:4px;align-items:center;pointer-events:none";
+  h.innerHTML=`<div id="olHudTurn" style="display:none;font-size:12px;font-weight:bold;padding:4px 12px;border-radius:14px;background:#141b2c;border:1px solid #3a4a6a;box-shadow:0 2px 8px #0007"></div>`
+   +`<div id="olHudOpp" style="display:none;font-size:12px;padding:4px 12px;border-radius:14px;background:#141b2c;border:1px solid #333;color:#bcd;box-shadow:0 2px 8px #0007"></div>`
+   +`<div id="olHudDc" style="display:none;font-size:12.5px;font-weight:bold;padding:5px 14px;border-radius:14px;background:#3a1616;border:1px solid #8a3030;color:#ffb3b3;box-shadow:0 2px 10px #0009;pointer-events:auto"></div>`;
+  (document.body||document.documentElement).appendChild(h);
+ }
+ return h;
+}
+function olShowTurnHud(remain,consec){
+ olHudEl(); const el=$("olHudTurn"); if(!el)return;
+ const warn=remain<=15;
+ el.style.display="";
+ el.style.color=warn?"#ffb3b3":"#ffe08a";
+ el.style.borderColor=warn?"#8a3030":"#5a6a3a";
+ el.textContent=`⏱ あなたの手番 残り${Math.max(0,remain)}秒`+(consec>0?`（タイムアウト${consec}/${OL_TIMEOUT_LIMIT}）`:"");
+}
+function olHideTurnHud(){ const el=$("olHudTurn"); if(el)el.style.display="none"; }
+function olShowOppHudTxt(remain){ olHudEl(); const el=$("olHudOpp"); if(!el)return; el.style.display=""; el.textContent=`🕒 相手の手番${remain!=null?` 残り約${Math.max(0,remain)}秒`:"…"}`; }
+function olHideOppHud(){ const el=$("olHudOpp"); if(el)el.style.display="none"; }
+function olShowDcHud(remain){
+ olHudEl(); const el=$("olHudDc"); if(!el)return;
+ ONLINE._dcActive=true; el.style.display="";
+ el.textContent=`⚠ 相手の接続が不安定です（切断猶予 残り${Math.max(0,remain)}秒）`;
+}
+function olHideDcHud(){ ONLINE._dcActive=false; const el=$("olHudDc"); if(el)el.style.display="none"; }
+/* --- 手番タイマー(自分の各決定90秒) --- */
+function olStartTurnTimer(onExpire){
+ olClearTurnTimer();
+ if(!ONLINE.active||ONLINE.ended)return;
+ ONLINE.turnDeadline=Date.now()+OL_TURN_MS;
+ ONLINE._turnExpire=onExpire;
+ olTickTurn();
+ ONLINE.turnTimerId=setInterval(olTickTurn,1000);
+}
+function olTickTurn(){
+ if(!ONLINE.active||ONLINE.ended){ const fn=ONLINE._turnExpire; olClearTurnTimer(); if(fn){ try{fn(true);}catch(e){console.error(e);} } return; } // 終局: 保留中の決定を畳んで解放
+ const remain=Math.ceil((ONLINE.turnDeadline-Date.now())/1000);
+ olShowTurnHud(remain, ONLINE.consecTimeouts||0);
+ if(remain<=0){ const fn=ONLINE._turnExpire; olClearTurnTimer(); if(fn){ try{fn(false);}catch(e){console.error(e);} } }
+}
+function olClearTurnTimer(){
+ if(ONLINE.turnTimerId){ clearInterval(ONLINE.turnTimerId); ONLINE.turnTimerId=null; }
+ ONLINE._turnExpire=null; olHideTurnHud();
+}
+/* 自分の1決定をタイマー付きで実行。放置(90秒)なら autoFn() の安全な既定で自動解決。
+   手動で確定したら連続タイムアウトをリセット。タイムアウトなら連続数を加算し3回で時間切れ負け。 */
+function olRunMyDecision(coreFn, autoFn){
+ return new Promise(resolve=>{
+  let done=false;
+  const settle=(v)=>{ if(done)return; done=true; olClearTurnTimer(); resolve(v); };
+  olStartTurnTimer((endedFlag)=>{
+   if(done)return;
+   let v; try{ v=autoFn(); }catch(e){ console.error("auto決定失敗",e); v=undefined; }
+   olClearPromptUI();
+   if(!endedFlag && !ONLINE.ended){ // 純粋な90秒超過のみタイムアウトとして計上
+    log("⏱ 手番タイマー(90秒)超過: 自動で処理しました","imp");
+    olRegisterTimeout(); // 連続タイムアウト加算(3回で時間切れ負け)
+   }
+   settle(v);
+  });
+  Promise.resolve().then(coreFn).then(v=>{ ONLINE.consecTimeouts=0; settle(v); },
+   err=>{ console.error("決定処理エラー",err); settle(undefined); });
+ });
+}
+// タイムアウトで開いていたプロンプト/モーダルを畳む(ゴースト操作・二重解決を防ぐ)
+function olClearPromptUI(){
+ try{ $("ovl").classList.remove("on"); }catch(e){}
+ try{ UI.hl=[]; UI.playableHand=new Set(); UI.onHand=null; UI.onDeck=null; UI.onPlan=null; }catch(e){}
+}
+function olRegisterTimeout(){
+ ONLINE.consecTimeouts=(ONLINE.consecTimeouts||0)+1;
+ log(`（連続タイムアウト ${ONLINE.consecTimeouts}/${OL_TIMEOUT_LIMIT}）`,"sys");
+ if(ONLINE.consecTimeouts>=OL_TIMEOUT_LIMIT && !ONLINE.ended){
+  ONLINE.ended=true;
+  log("⏱ 連続3回のタイムアウトにより時間切れ負けとなりました","imp");
+  olWriteFinish(ONLINE.oppUid,"timeout"); // 相手の勝ち
+  G.over=true; G.winner=other(ONLINE.myIndex);
+  olStopHeartbeat(); olClearOppTimer(); olHideDcHud();
+  rtcCleanup(true);
+  olReleaseWaiters();
+  olRecordOwnStats({winnerUid:ONLINE.oppUid, reason:"timeout"});
+  renderAll();
+ }
+}
+/* --- 相手の手番タイマー(ローカル推定・表示のみ) --- */
+function olStartOppTimer(){
+ olClearOppTimer();
+ if(!ONLINE.active||ONLINE.ended)return;
+ ONLINE.oppDeadline=Date.now()+OL_TURN_MS;
+ const tick=()=>{ if(!ONLINE.active||ONLINE.ended){ olClearOppTimer(); return; } const r=Math.ceil((ONLINE.oppDeadline-Date.now())/1000); olShowOppHudTxt(r>0?r:0); };
+ tick(); ONLINE.oppTimerId=setInterval(tick,1000);
+}
+function olClearOppTimer(){ if(ONLINE.oppTimerId){ clearInterval(ONLINE.oppTimerId); ONLINE.oppTimerId=null; } olHideOppHud(); }
+/* --- ハートビート/プレゼンス --- */
+function olStartHeartbeat(){
+ olStopHeartbeat();
+ olBeat();
+ ONLINE.hbTimer=setInterval(olBeat, OL_HB_MS);
+ ONLINE.wdTimer=setInterval(olWatchdog, 3000);
+}
+function olStopHeartbeat(){
+ if(ONLINE.hbTimer){ clearInterval(ONLINE.hbTimer); ONLINE.hbTimer=null; }
+ if(ONLINE.wdTimer){ clearInterval(ONLINE.wdTimer); ONLINE.wdTimer=null; }
+}
+function olBeat(){
+ if(!ONLINE.active||ONLINE.ended||!ONLINE.matchRef)return;
+ try{ ONLINE.matchRef.set({presence:{[ONLINE.myUid]:olTS()}},{merge:true}); }catch(e){}
+}
+// 相手の lastSeen 監視: SUSPECT(20s)で警告＋猶予カウント、GRACE(60s)超過で接続側(自分)の勝ち確定
+function olWatchdog(){
+ if(!ONLINE.active||ONLINE.ended)return;
+ if(!ONLINE.oppSeenAt)return; // まだ相手の生存を一度も観測していない
+ const stale=Date.now()-ONLINE.oppSeenAt;
+ if(stale>=OL_DC_SUSPECT_MS){
+  const remain=Math.max(0,Math.ceil((OL_DC_GRACE_MS-stale)/1000));
+  olShowDcHud(remain);
+  if(stale>=OL_DC_GRACE_MS){ olClaimDisconnectWin(); }
+ } else if(ONLINE._dcActive){ olHideDcHud(); }
+}
+function olClaimDisconnectWin(){
+ if(ONLINE.ended)return;
+ ONLINE.ended=true;
+ log("相手の接続が60秒以上途絶えたため、あなたの勝ちとなりました（切断）","imp");
+ olWriteFinish(ONLINE.myUid,"disconnect");
+ G.over=true; G.winner=ONLINE.myIndex;
+ olStopHeartbeat(); olClearTurnTimer(); olClearOppTimer(); olHideDcHud();
+ rtcCleanup(true);
+ olReleaseWaiters();
+ if(UI.concede){ try{UI.concede();}catch(e){} }
+ olRecordOwnStats({winnerUid:ONLINE.myUid, reason:"disconnect"});
+ renderAll();
+}
+/* ============================================================
+   対戦中の音声チャット (WebRTC P2P + Firestore シグナリング) …「音声チャット」機能
+   - 対象は ONLINE対戦の2人のみ(vs-AI/ホーム/ロビー/デッキ管理では無効)。
+   - moves(指し手同期)/presence/heartbeat とは完全に別チャネル:
+       matches/{matchId}/rtc/offer              … caller の offer(SDP)
+       matches/{matchId}/rtc/answer             … callee の answer(SDP)
+       matches/{matchId}/rtc/offer/callerCandidates/{auto}  … caller の ICE候補
+       matches/{matchId}/rtc/answer/calleeCandidates/{auto} … callee の ICE候補
+     決定論同期・棋譜(moves)・presence を一切汚さない(参照/購読/書込を分離)。
+   - 役割は uid の文字列比較で決定論的に一意化: 小さい方=caller(offerを作る)、大きい方=callee(answerを返す)。
+     これで両クライアントが矛盾なく片方だけ offer を作る。
+   - ICEサーバは Google公開STUNのみ。TURNは未導入(厳しいNAT/対称NATでは繋がらない場合あり)。
+     必要になったら下記 RTC_ICE.iceServers に turn:{urls,username,credential} を追加する。
+   - 音声機能の失敗(権限拒否/未対応/接続不可)は対戦本体(指し手同期・進行)に一切影響させない(全て try/catch で隔離)。
+   ============================================================ */
+let RTC={ active:false, pc:null, localStream:null, remoteStream:null,
+  role:null, session:null, muted:false, remoteSet:false,
+  unsubs:[],                 // rtc用のonSnapshot購読(moves/presence/matchのunsubとは別管理・退出時に確実に解除)
+  rtcCol:null, offerRef:null, answerRef:null, callerCandCol:null, calleeCandCol:null };
+const RTC_ICE={ iceServers:[
+  {urls:"stun:stun.l.google.com:19302"},
+  {urls:"stun:stun1.l.google.com:19302"},
+  {urls:"stun:stun2.l.google.com:19302"}
+  // TURN未導入。厳しいNAT環境で接続できない場合はここに turn: を追加する(要TURNサーバ)。
+]};
+function rtcSupported(){
+  return typeof RTCPeerConnection!=="undefined" && typeof RTCSessionDescription!=="undefined"
+    && !!(navigator.mediaDevices && typeof navigator.mediaDevices.getUserMedia==="function");
+}
+/* --- 音声バーUI(ONLINE対戦画面にのみ生成。既定OFF=マイクを勝手に取らない) --- */
+function rtcInitUI(){
+  try{
+    if(!ONLINE.active)return;
+    let bar=$("rtcBar");
+    if(!bar){
+      bar=document.createElement("div"); bar.id="rtcBar";
+      bar.style.cssText="position:fixed;top:44px;right:8px;z-index:61;display:flex;gap:6px;align-items:center;background:#141b2c;border:1px solid #3a4a6a;border-radius:14px;padding:4px 8px;box-shadow:0 2px 8px #0007;font-size:12px";
+      bar.innerHTML=`<button id="rtcCallBtn" style="font-size:12px;padding:3px 10px">🎤 通話</button>`
+        +`<button id="rtcMuteBtn" style="display:none;font-size:12px;padding:3px 8px" title="マイクのミュート切替">🎤</button>`
+        +`<span id="rtcStat" style="color:#bcd;font-size:11px;min-width:48px;text-align:center">未接続</span>`
+        +`<audio id="rtcAudio" autoplay playsinline style="display:none"></audio>`;
+      (document.body||document.documentElement).appendChild(bar);
+      const cb=$("rtcCallBtn"); if(cb)cb.onclick=rtcToggleCall;
+      const mb=$("rtcMuteBtn"); if(mb)mb.onclick=rtcToggleMute;
+      if(!rtcSupported()){ const cb2=$("rtcCallBtn"); if(cb2)cb2.disabled=true; rtcSetStat("非対応"); }
+    }
+  }catch(e){ console.error("rtc UI生成失敗",e); }
+}
+function rtcSetStat(t){ const el=$("rtcStat"); if(el)el.textContent=t; }
+function rtcRemoveUI(){ const b=$("rtcBar"); if(b)b.remove(); }
+function rtcFail(msg){
+  const btn=$("rtcCallBtn"); if(btn)btn.textContent="🎤 通話";
+  const mb=$("rtcMuteBtn"); if(mb)mb.style.display="none";
+  rtcSetStat(msg||"利用不可");
+}
+/* ボタン押下で開始/終了(ユーザー操作起点でマイク許可を取る) */
+function rtcToggleCall(){ if(RTC.active){ rtcCleanup(false); } else { rtcStartCall(); } }
+async function rtcStartCall(){
+  if(RTC.active)return;
+  if(!ONLINE.active||ONLINE.ended){ rtcSetStat("対戦外"); return; }
+  if(!rtcSupported()){ rtcFail("非対応"); return; }
+  if(!ONLINE.matchRef||!ONLINE.myUid||!ONLINE.oppUid){ rtcFail("利用不可"); return; }
+  const btn=$("rtcCallBtn");
+  try{
+    RTC.active=true; RTC.remoteSet=false; RTC.muted=false;
+    if(btn)btn.textContent="⛔ 通話終了";
+    rtcSetStat("マイク許可…");
+    // 1) マイク取得(HTTPS必須。GitHub Pages/mybrain.tv は https のため可)。ユーザー操作起点。
+    RTC.localStream=await navigator.mediaDevices.getUserMedia({audio:true, video:false});
+    // 2) 役割を uid 文字列比較で決定論的に一意化(小さい方=caller)
+    RTC.role=(ONLINE.myUid < ONLINE.oppUid)?"caller":"callee";
+    // 通話ごとに一意なセッションIDを付与(古いoffer/answerによる誤接続を無効化する)。callerが基準。
+    RTC.session=(ONLINE.myUid<ONLINE.oppUid?ONLINE.myUid:ONLINE.oppUid)+"_"+Date.now()+"_"+Math.random().toString(36).slice(2,8);
+    // 3) シグナリングパス(moves 等とは別チャネル)
+    RTC.rtcCol=ONLINE.matchRef.collection("rtc");
+    RTC.offerRef=RTC.rtcCol.doc("offer");
+    RTC.answerRef=RTC.rtcCol.doc("answer");
+    RTC.callerCandCol=RTC.offerRef.collection("callerCandidates");
+    RTC.calleeCandCol=RTC.answerRef.collection("calleeCandidates");
+    // 4) PeerConnection(通話開始のたびに新規生成)
+    const pc=new RTCPeerConnection(RTC_ICE);
+    RTC.pc=pc; RTC.remoteStream=new MediaStream();
+    RTC.localStream.getTracks().forEach(t=>pc.addTrack(t, RTC.localStream));
+    // 相手音声を受信 → 非表示<audio>で再生(自分の声は再生しない)
+    pc.ontrack=(ev)=>{ try{ (ev.streams&&ev.streams[0]?ev.streams[0].getTracks():[ev.track]).forEach(tr=>{ try{RTC.remoteStream.addTrack(tr);}catch(_){} }); const a=$("rtcAudio"); if(a){ a.srcObject=RTC.remoteStream; if(a.play)a.play().catch(()=>{}); } }catch(e){ console.error("ontrack",e); } };
+    pc.onconnectionstatechange=rtcReflectState;
+    pc.oniceconnectionstatechange=rtcReflectState;
+    rtcReflectState();
+    if(RTC.role==="caller") await rtcRunCaller(); else await rtcRunCallee();
+    // ミュートトグルを表示(接続確立を待たずに使える)
+    const mb=$("rtcMuteBtn"); if(mb){ mb.style.display=""; rtcUpdMuteBtn(); }
+  }catch(e){
+    console.error("通話開始失敗",e);
+    rtcCleanup(false);
+    rtcFail((e&&(e.name==="NotAllowedError"||e.name==="SecurityError"))?"マイク不許可":(e&&e.name==="NotFoundError")?"マイク無し":"利用不可");
+  }
+}
+/* caller: offerを作り、answer/相手ICEを購読 */
+async function rtcRunCaller(){
+  const pc=RTC.pc;
+  // 自分の役割側の古いシグナリングをクリア(古いofferでの誤接続を防ぐ)
+  await rtcDeleteDoc(RTC.offerRef); await rtcClearCol(RTC.callerCandCol);
+  pc.onicecandidate=(ev)=>{ if(ev.candidate){ try{ RTC.callerCandCol.add({cand:ev.candidate.toJSON(), session:RTC.session}); }catch(e){} } };
+  const offer=await pc.createOffer({offerToReceiveAudio:true});
+  await pc.setLocalDescription(offer);
+  await RTC.offerRef.set({type:offer.type, sdp:offer.sdp, session:RTC.session, from:ONLINE.myUid, ts:olTS()});
+  rtcSetStat("相手待ち");
+  // answer(callee)を待つ → setRemoteDescription(セッション一致・未設定時のみ)
+  RTC.unsubs.push(RTC.answerRef.onSnapshot(async snap=>{
+    try{ const data=snap.exists?snap.data():null;
+      if(!data||!data.sdp||data.session!==RTC.session)return;
+      if(pc.currentRemoteDescription)return;
+      await pc.setRemoteDescription(new RTCSessionDescription({type:data.type, sdp:data.sdp}));
+    }catch(e){ console.error("answer適用失敗",e); }
+  }, err=>console.error("answer購読エラー",err)));
+  // callee の ICE候補を購読 → addIceCandidate
+  RTC.unsubs.push(RTC.calleeCandCol.onSnapshot(snap=>{
+    snap.docChanges().forEach(async ch=>{ if(ch.type!=="added")return; const c=ch.doc.data(); if(!c||!c.cand)return;
+      if(c.session&&RTC.session&&c.session!==RTC.session)return;
+      try{ await pc.addIceCandidate(new RTCIceCandidate(c.cand)); }catch(e){} });
+  }, err=>console.error("calleeCand購読エラー",err)));
+}
+/* callee: offerを待ち answerを返す。自分ICEを書き、相手ICEを購読 */
+async function rtcRunCallee(){
+  const pc=RTC.pc;
+  await rtcDeleteDoc(RTC.answerRef); await rtcClearCol(RTC.calleeCandCol);
+  pc.onicecandidate=(ev)=>{ if(ev.candidate){ try{ RTC.calleeCandCol.add({cand:ev.candidate.toJSON(), session:RTC.session}); }catch(e){} } };
+  rtcSetStat("相手待ち");
+  RTC.unsubs.push(RTC.offerRef.onSnapshot(async snap=>{
+    try{ const data=snap.exists?snap.data():null;
+      if(!data||!data.sdp)return;
+      if(RTC.remoteSet)return;                 // 既にoffer適用済みなら無視(重複防止)
+      RTC.remoteSet=true; RTC.session=data.session||RTC.session;   // caller のセッションに合わせる
+      await pc.setRemoteDescription(new RTCSessionDescription({type:data.type, sdp:data.sdp}));
+      const answer=await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+      await RTC.answerRef.set({type:answer.type, sdp:answer.sdp, session:RTC.session, from:ONLINE.myUid, ts:olTS()});
+      rtcSetStat("接続中…");
+    }catch(e){ console.error("offer処理失敗",e); RTC.remoteSet=false; }
+  }, err=>console.error("offer購読エラー",err)));
+  RTC.unsubs.push(RTC.callerCandCol.onSnapshot(snap=>{
+    snap.docChanges().forEach(async ch=>{ if(ch.type!=="added")return; const c=ch.doc.data(); if(!c||!c.cand)return;
+      if(c.session&&RTC.session&&c.session!==RTC.session)return;
+      try{ await pc.addIceCandidate(new RTCIceCandidate(c.cand)); }catch(e){} });
+  }, err=>console.error("callerCand購読エラー",err)));
+}
+function rtcReflectState(){
+  const pc=RTC.pc; if(!pc)return;
+  const cs=pc.connectionState||pc.iceConnectionState||"";
+  let t;
+  if(cs==="connected"||cs==="completed") t="通話中";
+  else if(cs==="failed") t="接続失敗";
+  else if(cs==="disconnected") t="切断";
+  else if(cs==="connecting"||cs==="checking") t="接続中…";
+  else t=RTC.remoteSet?"接続中…":"相手待ち";
+  rtcSetStat(t);
+}
+function rtcShowMuteBtn(){ const b=$("rtcMuteBtn"); if(b){ b.style.display=""; rtcUpdMuteBtn(); } }
+function rtcUpdMuteBtn(){ const b=$("rtcMuteBtn"); if(b)b.textContent=RTC.muted?"🔇":"🎤"; }
+function rtcToggleMute(){
+  if(!RTC.localStream)return;
+  RTC.muted=!RTC.muted;
+  try{ RTC.localStream.getAudioTracks().forEach(tr=>tr.enabled=!RTC.muted); }catch(e){}
+  rtcUpdMuteBtn();
+}
+async function rtcDeleteDoc(ref){ try{ if(ref)await ref.delete(); }catch(e){} }
+async function rtcClearCol(col){ try{ if(!col)return; const s=await col.get(); const b=[]; s.forEach(d=>b.push(d.ref.delete())); await Promise.all(b); }catch(e){} }
+/* 通話のクリーンアップ: 購読解除・自分のシグナリング削除・マイク停止・PC close。full=trueでUIも撤去。
+   対戦終了(終局/投了/退出/切断/時間切れ)・ページ離脱で呼ぶ。冪等。 */
+function rtcCleanup(full){
+  try{
+    (RTC.unsubs||[]).forEach(u=>{ try{u();}catch(e){} }); RTC.unsubs=[];
+    // 自分が書いたシグナリングドキュメントのみ削除(ベストエフォート)
+    try{ if(RTC.role==="caller"){ rtcDeleteDoc(RTC.offerRef); rtcClearCol(RTC.callerCandCol); }
+         else if(RTC.role==="callee"){ rtcDeleteDoc(RTC.answerRef); rtcClearCol(RTC.calleeCandCol); } }catch(e){}
+    try{ if(RTC.localStream) RTC.localStream.getTracks().forEach(t=>{ try{t.stop();}catch(_){} }); }catch(e){}
+    try{ if(RTC.pc){ RTC.pc.ontrack=null; RTC.pc.onicecandidate=null; RTC.pc.onconnectionstatechange=null; RTC.pc.oniceconnectionstatechange=null; RTC.pc.close(); } }catch(e){}
+    const a=$("rtcAudio"); if(a){ try{a.srcObject=null;}catch(e){} }
+  }catch(e){ console.error("rtc cleanup",e); }
+  RTC.active=false; RTC.pc=null; RTC.localStream=null; RTC.remoteStream=null;
+  RTC.role=null; RTC.session=null; RTC.muted=false; RTC.remoteSet=false;
+  RTC.rtcCol=RTC.offerRef=RTC.answerRef=RTC.callerCandCol=RTC.calleeCandCol=null;
+  if(full){ rtcRemoveUI(); }
+  else{ // バーは残し、再度「通話」を押せる状態に戻す
+    const btn=$("rtcCallBtn"); if(btn)btn.textContent="🎤 通話";
+    const mb=$("rtcMuteBtn"); if(mb)mb.style.display="none";
+    rtcSetStat("未接続");
+  }
+}
+// 支払いモーダル放置時の自動支払い(色指定分+無色分を autoSelectPay で凍結)。true=支払い済み。
+function olAutoPay(pi,cost){
+ const p=G.pl[pi];
+ try{
+  const r=autoSelectPay(p,cost);
+  r.selE.forEach(i=>{ if(p.energy[i])p.energy[i].frozen=true; });
+  r.selS.forEach(i=>{ if(p.smash[i])p.smash[i].frozen=true; });
+  renderAll();
+ }catch(e){ console.error("自動支払い失敗",e); }
+ return true;
+}
+/* ===== 対戦成績(勝敗＋履歴)。自分のuidのみ更新し、_statsRecordedで同一クライアントの二重加算を防ぐ ===== */
+async function olRecordOwnStats(d){
+ if(!fbDB||!currentUser||ONLINE._statsRecorded)return;
+ ONLINE._statsRecorded=true;
+ const uid=currentUser.uid;
+ const winnerUid=(d&&d.winnerUid!==undefined)?d.winnerUid:(G.winner==null?null:(G.winner===ONLINE.myIndex?ONLINE.myUid:ONLINE.oppUid));
+ const reason=(d&&d.reason)||"normal";
+ const isDraw=(winnerUid==null);
+ const meWon=!isDraw && winnerUid===uid;
+ const key=isDraw?"draws":(meWon?"wins":"losses");
+ const oppName=(d&&d.players&&d.players[ONLINE.oppUid]&&d.players[ONLINE.oppUid].nickname)||ONLINE.oppNick||"相手";
+ const myDeck=(d&&d.players&&d.players[uid]&&d.players[uid].deck&&d.players[uid].deck.name)
+   ||((G.pl&&G.pl[ONLINE.myIndex]&&G.pl[ONLINE.myIndex].deckDef&&G.pl[ONLINE.myIndex].deckDef.name))||"?";
+ try{
+  const inc=firebase.firestore.FieldValue.increment(1);
+  await fbDB.collection("users").doc(uid).set({[key]:inc},{merge:true});
+  // ローカルの currentProfile も更新して表示に即反映
+  currentProfile=currentProfile||{};
+  currentProfile[key]=(currentProfile[key]||0)+1;
+  await fbDB.collection("users").doc(uid).collection("history").doc(ONLINE.matchId||("m"+Date.now())).set({
+   matchId:ONLINE.matchId||null, // 棋譜再生用: 対戦ドキュメントID(seed/デッキ/moves を読むため)
+   opponentNickname:oppName, result:isDraw?"draw":(meWon?"win":"lose"),
+   myDeckName:myDeck, reason, endedAt:olTS()
+  },{merge:true});
+  renderAccount();
+ }catch(e){ console.error("対戦成績の記録に失敗",e); }
+}
+function olStatsLabel(){
+ const w=(currentProfile&&currentProfile.wins)||0, l=(currentProfile&&currentProfile.losses)||0, dr=(currentProfile&&currentProfile.draws)||0;
+ return `${w}勝${l}敗${dr?`${dr}分`:""}`;
+}
+/* 対戦成績・履歴モーダル(直近20件) */
+async function showStatsHistory(){
+ const m=$("acctMenu"); if(m)m.classList.remove("on");
+ if(!currentUser||!fbDB){ alert("ログインが必要です"); return; }
+ showModal("対戦成績", `<div style="text-align:center;padding:6px 4px"><div style="font-size:20px;color:var(--gold);font-weight:bold;margin-bottom:6px">${olStatsLabel()}</div><div id="histBox" style="color:var(--dim);font-size:12px;margin-top:10px">履歴を読み込み中…</div></div>`);
+ try{
+  const snap=await fbDB.collection("users").doc(currentUser.uid).collection("history").orderBy("endedAt","desc").limit(20).get();
+  const rows=[];
+  snap.forEach(doc=>{ const h=doc.data()||{};
+   const res=h.result==="win"?'<b style="color:#8fe08f">WIN</b>':h.result==="lose"?'<b style="color:#e88a8a">LOSE</b>':'<b style="color:#cfcf8a">DRAW</b>';
+   const rsn=h.reason==="disconnect"?"切断":h.reason==="timeout"?"時間切れ":h.reason==="normal"?"":`(${h.reason})`;
+   // 棋譜再生: matchId(なければドキュメントID=matchId)から seed/デッキ/moves を読み最初から再生する
+   const mid=h.matchId||doc.id;
+   const rp=mid?`<button onclick="olReplayFinishedMatch('${escapeHTML(String(mid))}')" style="font-size:11px;padding:2px 8px;white-space:nowrap" title="この対戦を最初から棋譜再生">▶ 再生</button>`:"";
+   rows.push(`<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:5px 4px;border-bottom:1px solid #2a3040;font-size:12px"><span>${res} vs ${escapeHTML(h.opponentNickname||"相手")}</span><span style="display:flex;gap:8px;align-items:center"><span style="color:var(--dim)">${escapeHTML(h.myDeckName||"")} ${rsn}</span>${rp}</span></div>`);
+  });
+  const box=$("histBox");
+  if(box)box.innerHTML=rows.length?`<div style="text-align:left;max-width:420px;margin:0 auto">${rows.join("")}</div>`:'<div style="color:var(--dim)">対戦履歴はまだありません</div>';
+ }catch(e){ console.error(e); const box=$("histBox"); if(box)box.innerHTML='<div style="color:#e88a8a">履歴の取得に失敗しました</div>'; }
+}
+/* ===== 成績履歴からの棋譜再生(読み取り専用): matches/{id} の seed/デッキ/firstUid と moves(seq順)を読み、
+   復帰再生と同じ「オンライン決定をinboxから供給して局面を再構築」する要領で最初から再生する。
+   olResumeMatch(ライブ復帰)と違い、Firestoreへ一切書き込まず(_finishWritten/_statsRecordedで抑止)、
+   購読もせず、記録済みの手を再実行し終えたら既存のリプレイUI(前後/スライダー)に載せる。 ===== */
+async function olReplayFinishedMatch(matchId){
+ if(olMatchInProgress()){ alert("対戦中は棋譜を再生できません。終局後にご利用ください。"); return; }
+ if(!fbDB||!currentUser){ alert("ログインが必要です"); return; }
+ if(!matchId){ alert("再生対象の対戦IDがありません(古い履歴の可能性があります)。"); return; }
+ let d, inbox={}, cnt=0;
+ try{
+  const mref=fbDB.collection("matches").doc(matchId);
+  const snap=await mref.get();
+  if(!snap.exists){ alert("対戦データが見つかりませんでした(削除済みの可能性があります)。"); return; }
+  d=snap.data()||{};
+  const mvSnap=await mref.collection("moves").orderBy("seq").get();
+  mvSnap.forEach(doc=>{ const r=doc.data(); if(r&&r.seq!=null){ inbox[r.seq]=r; cnt=Math.max(cnt,r.seq+1); } });
+ }catch(e){ console.error("再生データ取得失敗",e); alert("対戦データの取得に失敗しました: "+(e&&e.message||e)); return; }
+ const fu=d.firstUid, ou=(d.uids||[]).find(u=>u!==fu);
+ if(!fu||!ou||!d.players||!d.players[fu]||!d.players[ou]){ alert("対戦データが不完全で再生できません。"); return; }
+ const deck0=d.players[fu].deck, deck1=d.players[ou].deck;
+ if(!deck0||!deck1||!deck0.list||!deck1.list){ alert("デッキ情報が取得できず再生できません。"); return; }
+ if(!cnt){ alert("この対戦には再生できる指し手が記録されていません。"); return; }
+ // ONLINE を「読み取り専用リプレイ」状態に。全決定を inbox から供給し、書込・購読・タイマーは行わない。
+ const meUid=currentUser.uid;
+ ONLINE.active=true; ONLINE.ended=false; ONLINE._replayView=true;
+ ONLINE._finishWritten=true; ONLINE._statsRecorded=true; // endGame等での書込を無効化(読み取り専用)
+ ONLINE._inMyAction=false;
+ ONLINE.myUid=meUid; ONLINE.myIndex=(meUid===fu)?0:((meUid===ou)?1:0); ONLINE.oppUid=(meUid===fu)?ou:fu;
+ ONLINE.matchId=null; ONLINE.matchRef=null; ONLINE.movesRef=null; ONLINE.movesUnsub=null; ONLINE.matchUnsub=null;
+ ONLINE.seq=0; ONLINE.inbox=inbox; ONLINE.waiters={};
+ ONLINE.replayUntil=Number.MAX_SAFE_INTEGER; // 全決定を catch-up 扱い→olRecvMoveで供給・送信なし(尽きたら_replayViewガードで終局)
+ const ovl=$("ovl"); if(ovl)ovl.classList.remove("on"); HOME_OPEN=false;
+ const names=[ (d.players[fu].nickname||"先攻"), (d.players[ou].nickname||"後攻") ];
+ try{
+  newGame(deck0, deck1, {seed:d.seed, first:0, online:true, names});
+  G._reconstruct=true; // renderAllはスナップショット記録のみ(DOM描画なし・高速)
+  G.openingHands=[G.pl[0].hand.slice(),G.pl[1].hand.slice()];
+  await runGame(); // 記録済みの手を最後まで再実行して各局面を再構築
+ }catch(e){ console.error("再生の再構築に失敗",e); }
+ G._reconstruct=false;
+ // 終局結果(勝者)を対戦ドキュメントの記録で上書き(切断/時間切れ/投了は指し手だけでは勝者が定まらないため)
+ if(d.winnerUid!==undefined){
+  const w=d.winnerUid==null?null:(d.winnerUid===fu?0:1);
+  G.winner=w; if(G.history&&G.history.length){G.history[G.history.length-1].winner=w;G.history[G.history.length-1].over=true;}
+ }
+ // ONLINE 状態を後片付け(以後の通常UI/POV表示に影響しないように)
+ ONLINE.active=false; ONLINE.ended=true; ONLINE._replayView=false;
+ ONLINE.inbox={}; ONLINE.waiters={}; ONLINE.replayUntil=0;
+ KREC={mode:"off",stream:[],i:0};
+ if(!(G.history&&G.history.length)){ alert("この対戦の再生用データを再構築できませんでした(記録が不完全な可能性があります)。"); return; }
+ REPLAY={frames:G.history,logs:G.logs.slice(),idx:0,liveG:null,imported:true};
+ openReplayBar(); replayRender();
+}
+/* ===== 再接続: 未終局の自分の対戦を検出して復帰再生する ===== */
+async function olFindResumable(){
+ if(!fbDB||!currentUser)return null;
+ try{
+  const snap=await fbDB.collection("matches").where("uids","array-contains",currentUser.uid).limit(20).get();
+  let best=null, bestT=0;
+  snap.forEach(doc=>{ const d=doc.data()||{};
+   if(d.status==="finished")return;
+   if(!(d.status==="ready"||d.status==="playing"))return;
+   const t=(d.createdAt&&d.createdAt.toMillis)?d.createdAt.toMillis():0;
+   if(t>=bestT){ bestT=t; best={id:doc.id, d}; }
+  });
+  return best;
+ }catch(e){ console.error("復帰対象の検索失敗",e); return null; }
+}
+async function olResumeMatch(matchId){
+ if(ONLINE.active){ return; }
+ if(!fbDB||!currentUser){ showHome(); return; }
+ const meUid=currentUser.uid;
+ try{
+  const mref=fbDB.collection("matches").doc(matchId);
+  const snap=await mref.get();
+  if(!snap.exists){ alert("対戦が見つかりませんでした。"); showHome(); return; }
+  const d=snap.data();
+  if(d.status==="finished"){ alert("この対戦は既に終了しています。"); showHome(); return; }
+  const fu=d.firstUid, ou=(d.uids||[]).find(u=>u!==fu);
+  if(!fu||!ou||!d.players||!d.players[fu]||!d.players[ou]){ alert("対戦データが不完全です。"); showHome(); return; }
+  const deck0=d.players[fu].deck, deck1=d.players[ou].deck;
+  if(!deck0||!deck1||!deck0.list||!deck1.list){ alert("デッキ情報が取得できませんでした。"); showHome(); return; }
+  // 既存の指し手(seq順で全件)を先読みして inbox へ(復帰再生で即時供給)
+  const mvSnap=await mref.collection("moves").orderBy("seq").get();
+  const inbox={}; let cnt=0;
+  mvSnap.forEach(doc=>{ const r=doc.data(); if(r&&r.seq!=null){ inbox[r.seq]=r; cnt=Math.max(cnt,r.seq+1); } });
+  // ONLINE 同期状態を初期化(復帰再生モード)
+  ONLINE.active=true; ONLINE.ended=false; ONLINE._finishWritten=false; ONLINE._inMyAction=false;
+  ONLINE.myUid=meUid; ONLINE.myIndex=(meUid===fu)?0:1; ONLINE.oppUid=(meUid===fu)?ou:fu;
+  ONLINE.matchId=matchId; ONLINE.seq=0; ONLINE.inbox=inbox; ONLINE.waiters={};
+  ONLINE.replayUntil=cnt; ONLINE.consecTimeouts=0; ONLINE._statsRecorded=false;
+  ONLINE.oppSeenAt=0; ONLINE._oppPresMs=0; ONLINE._dcActive=false;
+  ONLINE.matchRef=mref; ONLINE.movesRef=mref.collection("moves");
+  ONLINE.oppNick=(d.players[ONLINE.oppUid]&&d.players[ONLINE.oppUid].nickname)||"相手";
+  try{ mref.set({status:"playing", presence:{[meUid]:olTS()}},{merge:true}); }catch(e){}
+  // ライブ購読(既存の手も初期スナップショットで再配信されるがinbox上書きで冪等)
+  ONLINE.movesUnsub=ONLINE.movesRef.onSnapshot(sn=>{
+   sn.docChanges().forEach(ch=>{ if(ch.type==="removed")return; olDeliver(ch.doc.data()); });
+  }, err=>{ console.error("moves購読エラー",err); olNet("同期通信のエラーが発生しました。"); });
+  ONLINE.matchUnsub=mref.onSnapshot(sn=>{ if(sn&&sn.exists) olOnMatchSnap(sn.data()); });
+  resetModalChrome();
+  $("ovl").classList.remove("on"); HOME_OPEN=false;
+  const names=[ (d.players[fu].nickname||"先攻"), (d.players[ou].nickname||"後攻") ];
+  newGame(deck0, deck1, {seed:d.seed, first:0, online:true, names});
+  log(`=== 対戦に復帰: ${cnt}手を再生して現在局面まで復元します（あなたは ${ONLINE.myIndex===0?"先攻":"後攻"}） ===`,"imp");
+  renderAll();
+  olStartHeartbeat();
+  rtcInitUI(); // 復帰後も「通話」を押せば繋がる(rtc状態は持ち越さずやり直し)
+  olRunGame(); // catch-up(replayUntilまで)→ ライブ購読へ自動移行
+ }catch(e){ console.error("復帰失敗",e); alert("対戦への復帰に失敗しました: "+(e&&e.message||e)); if(ONLINE.active)olEndCleanup(); showHome(); }
+}
+/* 離脱時の掃除(ベストエフォート) */
+if(typeof window!=="undefined") window.addEventListener("beforeunload",()=>{
+ try{ if(OL.queueRef)OL.queueRef.delete(); }catch(e){}
+ try{ if(OL.roomRef)OL.roomRef.delete(); }catch(e){}
+ // 対戦中の離脱は即敗北にしない(切断猶予60秒方式)。ハートビートを止めてソフトな切断状態にするだけ。
+ // 60秒以内に「対戦に復帰」で戻れば継続。相手側は lastSeen が60秒 stale で勝ちを確定できる。
+ try{ if(ONLINE.active && !ONLINE.ended){ olStopHeartbeat(); } }catch(e){}
+ // 音声通話は離脱時に確実に停止(マイク開きっぱなし・PCリークを防ぐ)。復帰後は再度「通話」で繋ぎ直す。
+ try{ if(RTC.active){ rtcCleanup(false); } }catch(e){}
+});
+// タブ復帰時はハートビートを即時送信して素早く生存を知らせる(相手の切断カウントを解除させる)
+if(typeof document!=="undefined") document.addEventListener("visibilitychange",()=>{
+ try{ if(!document.hidden && ONLINE.active && !ONLINE.ended){ if(!ONLINE.hbTimer)olStartHeartbeat(); else olBeat(); } }catch(e){}
+});
+/* ============ 起動 ============ */
+async function boot(){
+ layoutPanes();
+ // スマホでは対戦記録パネルは初期状態で閉じる(右スライドアウト式のため)。PCは開いたまま。
+ if(typeof window!=="undefined"&&window.matchMedia&&window.matchMedia("(max-width:820px)").matches){const pr=$("paneR");if(pr)pr.classList.remove("open");}
+ showHome();   // いきなりデッキ選択に行かず、ホーム画面を表示
 }
 /* ログコピー */
 async function copyLog(){
@@ -3749,7 +5046,7 @@ function inspectHTML(no,u){
  ${d.type==="U"?`<div>パワー <b>${d.pow}</b> ／ スマッシュ <b>${d.sm}</b></div>`:""}`;
  if(u){
   const ep=effPow(u);
-  h+=`<div class="inow">現在: パワー${ep}${ep!==d.pow?`(修整${ep>d.pow?"+":""}${ep-d.pow})`:""} ／ 被ダメージ${u.dmg} ／ ${u.frozen?"⏸フリーズ":"▶リリース"} ／ ${areaOf(u)==="center"?"中央":areaOf(u)==="home"?(u.ctrl===0?"自軍":"敵側自軍"):"敵軍"}エリア</div>`;
+  h+=`<div class="inow">現在: パワー${ep}${ep!==d.pow?`(修整${ep>d.pow?"+":""}${ep-d.pow})`:""} ／ 被ダメージ${u.dmg} ／ ${u.frozen?"⏸フリーズ":"▶リリース"} ／ ${areaOf(u)==="center"?"中央":areaOf(u)==="home"?(u.ctrl===POV()?"自軍":"敵側自軍"):"敵軍"}エリア</div>`;
  }
  h+=`<div class="itx">${d.text||"(効果なし)"}</div>`;
  return h;
@@ -3816,7 +5113,57 @@ if(typeof window!=="undefined"){
   try{log(`⚠ 内部エラー: ${e.message}`,"imp");}catch(_){}
  });
 }
-if(typeof document!=="undefined"&&document.getElementById("board")){if($("verLbl"))$("verLbl").textContent=GAME_VERSION;boot();}
+/* ============ Firebase 認証・プロフィール (Phase3 M1) ============ */
+let currentUser=null, currentProfile=null;
+function escapeHTML(s){return String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
+function renderAccount(){
+ const el=$("acct"); if(!el)return;
+ if(!fbAuth){el.innerHTML='<span style="color:#e88a8a;font-size:11px">認証未接続</span>';return;}
+ if(!currentUser){ el.innerHTML='<button class="acctLogin" onclick="signInGoogle()">🔑 Googleでログイン</button>'; return; }
+ const nick=(currentProfile&&currentProfile.nickname)||currentUser.displayName||"プレイヤー";
+ const rec=olStatsLabel();
+ el.innerHTML=`<span class="acctName" onclick="toggleAcctMenu(event)" title="アカウント">👤 ${escapeHTML(nick)} <small style="color:var(--gold)">(${rec})</small> ▾</span>`+
+  `<div id="acctMenu" class="acctMenu"><button onclick="showStatsHistory()">対戦成績・履歴</button><button onclick="changeNickname()">ニックネーム変更</button><button onclick="signOutUser()">ログアウト</button></div>`;
+}
+function toggleAcctMenu(e){if(e)e.stopPropagation();const m=$("acctMenu");if(m)m.classList.toggle("on");}
+async function signInGoogle(){
+ if(!fbAuth){alert("認証に接続できていません(Firebase未初期化)");return;}
+ try{const p=new firebase.auth.GoogleAuthProvider();await fbAuth.signInWithPopup(p);}
+ catch(e){console.error(e);if(e&&e.code!=="auth/popup-closed-by-user"&&e.code!=="auth/cancelled-popup-request")alert("ログイン失敗: "+(e.message||e.code||e));}
+}
+async function signOutUser(){const m=$("acctMenu");if(m)m.classList.remove("on");try{await fbAuth.signOut();}catch(e){console.error(e);}}
+async function loadOrCreateProfile(user){
+ if(!fbDB)return {nickname:user.displayName||"プレイヤー"};
+ const ref=fbDB.collection("users").doc(user.uid);
+ try{
+  const snap=await ref.get();
+  if(snap.exists)return snap.data();
+  const prof={nickname:(user.displayName||"プレイヤー"),createdAt:firebase.firestore.FieldValue.serverTimestamp()};
+  await ref.set(prof); return prof;
+ }catch(e){console.error("プロフィール取得/作成失敗:",e);return {nickname:user.displayName||"プレイヤー"};}
+}
+async function changeNickname(){
+ const m=$("acctMenu");if(m)m.classList.remove("on");
+ if(!currentUser||!fbDB)return;
+ const cur=(currentProfile&&currentProfile.nickname)||currentUser.displayName||"";
+ const nn=prompt("ニックネーム（1〜20文字）",cur); if(nn==null)return;
+ const nick=nn.trim().slice(0,20); if(!nick){alert("ニックネームを入力してください");return;}
+ try{await fbDB.collection("users").doc(currentUser.uid).update({nickname:nick});currentProfile=Object.assign({},currentProfile,{nickname:nick});renderAccount();}
+ catch(e){console.error(e);alert("変更に失敗しました");}
+}
+function initAuth(){
+ renderAccount();
+ if(!fbAuth)return;
+ fbAuth.onAuthStateChanged(async user=>{
+  currentUser=user;
+  currentProfile=user?await loadOrCreateProfile(user):null;
+  renderAccount();
+  await syncDecksForUser(user);              // ログイン/ログアウトでデッキキャッシュを同期(初回はlocalStorageから移行)
+  if(HOME_OPEN)showHome();                    // ホーム表示中ならログイン状態に合わせて再描画
+ });
+ document.addEventListener("click",()=>{const m=$("acctMenu");if(m)m.classList.remove("on");});
+}
+if(typeof document!=="undefined"&&document.getElementById("board")){if($("verLbl"))$("verLbl").textContent=GAME_VERSION;initAuth();boot();}
 </script>
 </body>
 </html>
