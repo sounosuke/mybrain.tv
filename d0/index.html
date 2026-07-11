@@ -311,7 +311,7 @@ catch(e){ console.error("Firebase init 失敗:",e); }
 
 <script>
 "use strict";
-const GAME_VERSION="P3.16 (音声チャット: Cloudflare TURN 有効化)";
+const GAME_VERSION="P3.18 (フレンド対戦招待: オンライン即時/オフライン保留)";
 const KIFU_FMT=2; // 棋譜の記録フォーマット版(記録項目を増やしたら上げる。読込時に不一致なら警告)
 /* ============ カードデータ ============ */
 const CARDS={};
@@ -4064,15 +4064,21 @@ function showHome(){
     <div id="homeResumeWrap"></div>
     <div style="display:flex;flex-direction:column;gap:12px;max-width:320px;margin:0 auto">
      <button id="homeOnline" class="primary" style="font-size:15px;padding:14px">🌐 オンライン対戦</button>
+     <button id="homeFriends" style="font-size:15px;padding:14px">👥 フレンド<span id="homeFriendsBadge" style="display:none;margin-left:8px;background:#c0392b;color:#fff;border-radius:10px;font-size:11px;padding:1px 8px;vertical-align:middle"></span></button>
      <button id="homeDecks" style="font-size:15px;padding:14px">🃏 デッキ管理</button>
      <button id="homeAI" style="font-size:15px;padding:14px">🤖 AI対戦</button>
     </div>
    </div>`;
  bd.querySelector("#homeOnline").onclick=showLobby;
+ bd.querySelector("#homeFriends").onclick=showFriends;
  bd.querySelector("#homeDecks").onclick=showDeckManager;
  bd.querySelector("#homeAI").onclick=startAIMatch;
  bd.querySelector("#homeStats").onclick=showStatsHistory;
  $("ovl").classList.add("on");
+ // フレンド申請の未読件数バッジ(非同期・任意)
+ fbDB.collection("users").doc(currentUser.uid).collection("friendRequests").get().then(s=>{
+  const b=$("homeFriendsBadge"); if(b&&HOME_OPEN&&s.size>0){ b.textContent=s.size; b.style.display="inline-block"; }
+ }).catch(()=>{});
  // 未終局の自分の対戦があれば「▶ 対戦に復帰」を表示(非同期)
  olFindResumable().then(res=>{
   if(!res||!HOME_OPEN)return;
@@ -4189,7 +4195,9 @@ function showLobby(){
 }
 /* 持ち込みデッキ選択: オフライン(deckSelectScreen)と同じ見た目・同じ選択肢(プリセット＋自作)。
    各デッキの"顔"3枚アートも同じ署名カード選定ロジック・同じCSS(.deckArt/.dcard/.deckRow)を流用。 */
-function olRenderDeckSelect(){
+function olRenderDeckSelect(next){
+ // next: デッキ選択後に進む関数(省略時は通常ロビーへ)。onclickハンドラ経由(Event)で呼ばれても無害化。
+ const proceed=(typeof next==="function" && !(typeof Event!=="undefined" && next instanceof Event))?next:olRenderMenu;
  olCleanupListeners();
  const customs=loadCustomDecks();
  // プリセット(DECKS: 公式/オリジナル)＋自作を統合。official!==false → 公式、碧天/赤単は official:false → オリジナル、自作は preset:false。
@@ -4215,7 +4223,7 @@ function olRenderDeckSelect(){
     .slice(0,3);
   const artHTML=`<div class="deckArt" aria-hidden="true">${rep.map(no=>`<div class="dcard" style="background-image:url('art/${no}.png')"></div>`).join("")}</div>`;
   row.innerHTML=`${artHTML}<div class="deckInfo"><b>${escapeHTML(dk.name)}</b> <small style="color:var(--dim)">${escapeHTML(dk.colors||"")} ${tag}</small><br><small style="color:var(--dim)">${escapeHTML(dk.desc||"")}</small></div>`;
-  row.onclick=()=>{ OL.deck={name:dk.name, list:dk.list, colors:dk.colors}; olRenderMenu(); };
+  row.onclick=()=>{ OL.deck={name:dk.name, list:dk.list, colors:dk.colors}; proceed(); };
   list.appendChild(row);
  });
  bd.querySelector("#olDeckBack").onclick=()=>showHome();
@@ -4367,30 +4375,35 @@ function olRenderJoin(){
  bd.querySelector("#olJoinBack").onclick=olRenderMenu;
  setTimeout(()=>{ try{inp.focus();}catch(e){} },50);
 }
+/* 合言葉/招待の共通参加コア: rooms/{code} をトランザクションで waiting→matched にし matches を生成。
+   成立で matchId を返し、失敗(ルーム無し/対戦中/自室)は throw。合言葉参加・招待受諾の両方から流用。 */
+async function olJoinRoomCore(code){
+ const meUid=currentUser.uid;
+ const ref=fbDB.collection("rooms").doc(code);
+ return await fbDB.runTransaction(async tx=>{
+  const s=await tx.get(ref);
+  if(!s.exists) throw new Error("その合言葉のルームは見つかりません。");
+  const d=s.data()||{};
+  if(d.status!=="waiting") throw new Error("そのルームは既に対戦中または終了しています。");
+  if(d.hostUid===meUid) throw new Error("自分が作成したルームには参加できません。");
+  const m=fbDB.collection("matches").doc().id;
+  const seed=Math.floor(Math.random()*0xffffffff);
+  const uids=[d.hostUid, meUid];
+  const firstUid=uids[Math.floor(Math.random()*uids.length)];
+  const players={};
+  players[d.hostUid]={nickname:d.hostNickname||"相手", deck:d.hostDeck||null};
+  players[meUid]={nickname:olNick(), deck:{name:OL.deck.name,list:OL.deck.list}};
+  tx.set(fbDB.collection("matches").doc(m), {uids, players, seed, firstUid, status:"ready", createdAt:olTS()});
+  tx.update(ref, {status:"matched", matchId:m, guestUid:meUid});
+  return m;
+ });
+}
 async function olJoinPrivateDo(codeRaw){
  const code=(codeRaw||"").trim().toUpperCase();
  if(!code){ alert("合言葉を入力してください。"); return; }
- const meUid=currentUser.uid;
- const ref=fbDB.collection("rooms").doc(code);
  olRenderWaiting("ルームに参加しています…", olRenderMenu);
  try{
-  const mid=await fbDB.runTransaction(async tx=>{
-   const s=await tx.get(ref);
-   if(!s.exists) throw new Error("その合言葉のルームは見つかりません。");
-   const d=s.data()||{};
-   if(d.status!=="waiting") throw new Error("そのルームは既に対戦中または終了しています。");
-   if(d.hostUid===meUid) throw new Error("自分が作成したルームには参加できません。");
-   const m=fbDB.collection("matches").doc().id;
-   const seed=Math.floor(Math.random()*0xffffffff);
-   const uids=[d.hostUid, meUid];
-   const firstUid=uids[Math.floor(Math.random()*uids.length)];
-   const players={};
-   players[d.hostUid]={nickname:d.hostNickname||"相手", deck:d.hostDeck||null};
-   players[meUid]={nickname:olNick(), deck:{name:OL.deck.name,list:OL.deck.list}};
-   tx.set(fbDB.collection("matches").doc(m), {uids, players, seed, firstUid, status:"ready", createdAt:olTS()});
-   tx.update(ref, {status:"matched", matchId:m, guestUid:meUid});
-   return m;
-  });
+  const mid=await olJoinRoomCore(code);
   olGoMatch(mid);
  }catch(e){
   console.error("ルーム参加失敗:",e);
@@ -4433,6 +4446,7 @@ function olEndCleanup(){
  ONLINE.active=false;
  olStopHeartbeat(); olClearTurnTimer(); olClearOppTimer(); olHideDcHud();
  rtcCleanup(true); // 音声通話の全リソース解放(マイク開きっぱなし防止)
+ try{ olMaybeShowInvite(); }catch(e){} // 対戦中に保留していたフレンド招待を対戦後に提示
 }
 function olWriteFinish(winnerUid,reason){
  if(ONLINE._finishWritten)return;
@@ -4959,6 +4973,7 @@ async function olRecordOwnStats(d){
   currentProfile[key]=(currentProfile[key]||0)+1;
   await fbDB.collection("users").doc(uid).collection("history").doc(ONLINE.matchId||("m"+Date.now())).set({
    matchId:ONLINE.matchId||null, // 棋譜再生用: 対戦ドキュメントID(seed/デッキ/moves を読むため)
+   opponentUid:ONLINE.oppUid||null, // フレンド申請用: 相手uid(古い履歴はnull → 申請ボタン非表示)
    opponentNickname:oppName, result:isDraw?"draw":(meWon?"win":"lose"),
    myDeckName:myDeck, reason, endedAt:olTS()
   },{merge:true});
@@ -4969,12 +4984,321 @@ function olStatsLabel(){
  const w=(currentProfile&&currentProfile.wins)||0, l=(currentProfile&&currentProfile.losses)||0, dr=(currentProfile&&currentProfile.draws)||0;
  return `${w}勝${l}敗${dr?`${dr}分`:""}`;
 }
+/* ============================================================
+   フレンド機能 基盤 (P3.17) …対戦本体からは完全に隔離した追加機能。
+   データモデル:
+    presence/{uid}                         = {nick, ts(ms)}          在席(45秒でオフライン扱い)
+    users/{uid}/friendRequests/{fromUid}   = {fromUid, fromNick, ts} 受信した申請
+    users/{uid}/friends/{friendUid}        = {nick, since}           成立フレンド(双方向に書く)
+   ・presenceハートビートはログイン中のみ約25秒間隔で presence/{myUid} を上書き(setInterval多重起動ガード)。
+   ・承認時は必ず friends を双方向 set → 最後に request delete の順(ルールが申請docの存在をexists確認するため)。
+   ・showFriends の受信申請は onSnapshot 購読し、画面を閉じたら stopFriendsListeners() で解除(リーク防止)。 */
+let PRESENCE={timer:null};
+const PRESENCE_MS=25000;                 // 在席ハートビート間隔(約25秒)
+const PRESENCE_ONLINE_MS=45000;          // Date.now()-ts がこれ未満ならオンライン
+function beatPresence(){
+ if(!fbDB||!currentUser)return;
+ try{ fbDB.collection("presence").doc(currentUser.uid).set({nick:olNick(), ts:Date.now()}); }catch(e){ console.error("presence更新失敗",e); }
+}
+function startPresence(){
+ stopPresence();
+ beatPresence();
+ PRESENCE.timer=setInterval(beatPresence, PRESENCE_MS);
+}
+function stopPresence(){
+ if(PRESENCE.timer){ clearInterval(PRESENCE.timer); PRESENCE.timer=null; }
+}
+/* 簡易トースト(フレンド操作の結果表示。対戦ログ log() とは別物) */
+function olToast(msg, isErr){
+ let t=$("olToast");
+ if(!t){ t=document.createElement("div"); t.id="olToast";
+  t.style.cssText="position:fixed;left:50%;bottom:28px;transform:translateX(-50%);z-index:99999;padding:10px 18px;border-radius:8px;font-size:13px;color:#fff;box-shadow:0 4px 16px rgba(0,0,0,.45);pointer-events:none;transition:opacity .3s;max-width:90vw;text-align:center;line-height:1.4";
+  document.body.appendChild(t); }
+ t.style.background=isErr?"#7a2a2a":"#2a4a6a";
+ t.textContent=msg; t.style.opacity="1";
+ clearTimeout(t._tm); t._tm=setTimeout(()=>{ if(t)t.style.opacity="0"; }, 2200);
+}
+function olAgo(ms){ const s=Math.floor(ms/1000); if(s<60)return "1分未満前"; const m=Math.floor(s/60); if(m<60)return m+"分前"; const h=Math.floor(m/60); if(h<24)return h+"時間前"; return Math.floor(h/24)+"日前"; }
+/* 対戦履歴/フレンド一覧からのフレンド申請: users/{相手uid}/friendRequests/{myUid} を set */
+async function olSendFriendRequest(uid, nick, btn){
+ if(!fbDB||!currentUser){ alert("ログインが必要です"); return; }
+ if(!uid||uid===currentUser.uid)return;
+ if(btn){ btn.disabled=true; btn.textContent="送信中…"; }
+ try{
+  await fbDB.collection("users").doc(uid).collection("friendRequests").doc(currentUser.uid)
+    .set({fromUid:currentUser.uid, fromNick:olNick(), ts:Date.now()});
+  if(btn){ btn.textContent="申請済"; }
+  olToast("フレンド申請を送信しました");
+ }catch(e){ console.error("フレンド申請失敗",e); if(btn){ btn.disabled=false; btn.textContent="＋フレンド"; } olToast("申請の送信に失敗しました", true); }
+}
+/* ===== フレンド画面: 受信した申請(onSnapshot) ＋ フレンド一覧(presence表示) ===== */
+let FRIENDS={reqUnsub:null};
+function stopFriendsListeners(){ if(FRIENDS.reqUnsub){ try{FRIENDS.reqUnsub();}catch(e){} FRIENDS.reqUnsub=null; } }
+function showFriends(){
+ const m=$("acctMenu"); if(m)m.classList.remove("on");
+ if(!currentUser||!fbDB){ alert("ログインが必要です"); return; }
+ stopFriendsListeners();
+ showModal("フレンド", `<div style="text-align:left;max-width:440px;margin:0 auto;padding:2px">
+    <div style="font-weight:bold;color:var(--gold);font-size:14px;margin-bottom:6px">受信した申請</div>
+    <div id="frReqBox" style="font-size:12px;color:var(--dim);margin-bottom:16px">読み込み中…</div>
+    <div style="font-weight:bold;color:var(--gold);font-size:14px;margin-bottom:6px">フレンド一覧</div>
+    <div id="frListBox" style="font-size:12px;color:var(--dim)">読み込み中…</div>
+   </div>`);
+ // モーダルを閉じる時(OK/×)に購読を解除する
+ const ok=$("mOk"); if(ok)ok.onclick=()=>{ stopFriendsListeners(); $("ovl").classList.remove("on"); };
+ // 受信申請はリアルタイム購読(承認/拒否で即時反映)
+ FRIENDS.reqUnsub=fbDB.collection("users").doc(currentUser.uid).collection("friendRequests")
+   .onSnapshot(snap=>olRenderFriendRequests(snap),
+     err=>{ console.error("申請購読失敗",err); const b=$("frReqBox"); if(b)b.innerHTML='<span style="color:#e88a8a">申請の取得に失敗しました</span>'; });
+ olLoadFriends();
+}
+function olRenderFriendRequests(snap){
+ const box=$("frReqBox"); if(!box)return;
+ const rows=[];
+ snap.forEach(doc=>{ const r=doc.data()||{}; const sUid=r.fromUid||doc.id; const sNick=r.fromNick||"プレイヤー";
+  rows.push(`<div class="frReqRow" data-suid="${escapeHTML(sUid)}" data-snick="${escapeHTML(sNick)}" style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 4px;border-bottom:1px solid #2a3040">
+    <span style="color:#e8e8e8">${escapeHTML(sNick)} <small style="color:var(--dim)">があなたを申請</small></span>
+    <span style="display:flex;gap:6px">
+      <button class="frAccept" style="font-size:11px;padding:3px 12px;background:#2a5a2a;border-color:#3a7a3a">承認</button>
+      <button class="frReject" style="font-size:11px;padding:3px 10px">拒否</button>
+    </span></div>`);
+ });
+ box.innerHTML=rows.length?rows.join(""):'<span style="color:var(--dim)">新しい申請はありません</span>';
+ box.querySelectorAll(".frReqRow").forEach(row=>{
+  const suid=row.getAttribute("data-suid"), snick=row.getAttribute("data-snick");
+  const a=row.querySelector(".frAccept"), rj=row.querySelector(".frReject");
+  if(a)a.onclick=()=>olAcceptFriend(suid, snick, a);
+  if(rj)rj.onclick=()=>olRejectFriend(suid, rj);
+ });
+}
+/* 承認(申請元S を 自分R が承認): (a)R側friends → (b)S側friends → (c)Rのrequest削除 の順を厳守 */
+async function olAcceptFriend(sUid, sNick, btn){
+ if(!fbDB||!currentUser)return;
+ if(btn){ btn.disabled=true; btn.textContent="承認中…"; }
+ const R=currentUser.uid, now=Date.now();
+ try{
+  await fbDB.collection("users").doc(R).collection("friends").doc(sUid).set({nick:sNick, since:now});        // (a)
+  await fbDB.collection("users").doc(sUid).collection("friends").doc(R).set({nick:olNick(), since:now});     // (b)
+  await fbDB.collection("users").doc(R).collection("friendRequests").doc(sUid).delete();                      // (c) 最後
+  olToast("フレンドになりました");
+  olLoadFriends();  // 一覧を更新(申請行は onSnapshot が自動で消す)
+ }catch(e){ console.error("フレンド承認失敗",e); if(btn){ btn.disabled=false; btn.textContent="承認"; } olToast("承認に失敗しました", true); }
+}
+async function olRejectFriend(sUid, btn){
+ if(!fbDB||!currentUser)return;
+ if(btn){ btn.disabled=true; btn.textContent="…"; }
+ try{
+  await fbDB.collection("users").doc(currentUser.uid).collection("friendRequests").doc(sUid).delete();
+  olToast("申請を拒否しました");
+ }catch(e){ console.error("拒否失敗",e); if(btn){ btn.disabled=false; btn.textContent="拒否"; } olToast("拒否に失敗しました", true); }
+}
+async function olLoadFriends(){
+ const box=$("frListBox"); if(!box)return;
+ try{
+  const snap=await fbDB.collection("users").doc(currentUser.uid).collection("friends").get();
+  const friends=[]; snap.forEach(doc=>friends.push(Object.assign({uid:doc.id}, doc.data()||{})));
+  if(!friends.length){ box.innerHTML='<span style="color:var(--dim)">フレンドはまだいません。対戦履歴からフレンド申請できます。</span>'; return; }
+  const now=Date.now();
+  const rows=await Promise.all(friends.map(async f=>{
+   let online=false, ts=0;
+   try{ const ps=await fbDB.collection("presence").doc(f.uid).get(); if(ps.exists){ const p=ps.data()||{}; ts=Number(p.ts)||0; online=(now-ts)<PRESENCE_ONLINE_MS; } }catch(e){}
+   const dot=online?'<span style="color:#4caf50">●</span>':'<span style="color:#666">●</span>';
+   const stat=online?'オンライン':(ts?`最終ログイン ${olAgo(now-ts)}`:'オフライン');
+   return `<div class="frLRow" data-fuid="${escapeHTML(f.uid)}" data-fnick="${escapeHTML(f.nick||"フレンド")}" style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 4px;border-bottom:1px solid #2a3040">
+     <span style="color:#e8e8e8">${dot} ${escapeHTML(f.nick||"プレイヤー")} <small style="color:var(--dim)">${stat}</small></span>
+     <span style="display:flex;gap:6px">
+       <button class="frInvite" style="font-size:11px;padding:3px 10px" title="対戦に招待">⚔ 招待</button>
+       <button class="frRemove" style="font-size:11px;padding:3px 8px" title="フレンド解除">✕</button>
+     </span></div>`;
+  }));
+  box.innerHTML=rows.join("");
+  box.querySelectorAll(".frLRow").forEach(row=>{
+   const fuid=row.getAttribute("data-fuid");
+   const fnick=row.getAttribute("data-fnick")||"フレンド";
+   const inv=row.querySelector(".frInvite"), rm=row.querySelector(".frRemove");
+   if(inv)inv.onclick=()=>olInviteFriend(fuid, fnick);
+   if(rm)rm.onclick=()=>olRemoveFriend(fuid, row);
+  });
+ }catch(e){ console.error("フレンド一覧取得失敗",e); box.innerHTML='<span style="color:#e88a8a">フレンド一覧の取得に失敗しました</span>'; }
+}
+/* ============================================================
+   フレンド対戦招待 (P3.18) …既存プライベートルーム(rooms/{code})を内部流用。
+   データモデル:
+    users/{招待相手uid}/invites/{自分uid} = {fromUid, fromNick, roomCode, ts(ms)}
+   招待する側: デッキ選択 → プライベートルーム作成(コードは内部利用) → invites に set →
+              既存の「相手待ち」onSnapshot(room matched)で対戦成立 → olGoMatch。
+   招待される側: ログイン中ずっと users/{myUid}/invites を onSnapshot 購読。対戦中以外なら
+              ポップアップ(受ける/断る)。受ける=デッキ選択→olJoinRoomCore(roomCode)で参加。 */
+let INV={friendUid:null, friendNick:null, roomCode:null};
+const INVITE_TTL_MS=6*60*60*1000; // 6時間より古い招待は自動で無視/掃除
+
+/* --- 招待する側 --- */
+function olInviteFriend(friendUid, friendNick){
+ if(!fbDB||!currentUser){ alert("ログインが必要です"); return; }
+ if(!friendUid||friendUid===currentUser.uid){ olToast("自分は招待できません", true); return; }
+ stopFriendsListeners();               // フレンド画面の購読を止めてから対戦フローへ
+ INV.friendUid=friendUid; INV.friendNick=friendNick||"フレンド"; INV.roomCode=null;
+ OL.deck=null;
+ olRenderDeckSelect(olInviteCreateRoom); // デッキ選択→ルーム作成
+}
+async function olInviteCreateRoom(){
+ const friendUid=INV.friendUid, friendNick=INV.friendNick;
+ if(!friendUid||!OL.deck){ olRenderMenu(); return; }
+ // 既存プライベート作成と同一のルーム作成(コードはユーザーに見せない)
+ const code=olGenCode();
+ const ref=fbDB.collection("rooms").doc(code);
+ try{
+  await ref.set({hostUid:currentUser.uid, hostNickname:olNick(), hostDeck:{name:OL.deck.name,list:OL.deck.list}, createdAt:olTS(), status:"waiting"});
+ }catch(e){ console.error("招待ルーム作成失敗:",e); olToast("ルーム作成に失敗しました", true); olRenderMenu(); return; }
+ OL.roomRef=ref; INV.roomCode=code;
+ // 招待docを書き込み(同じ相手への既存招待は上書き/更新)
+ try{
+  await fbDB.collection("users").doc(friendUid).collection("invites").doc(currentUser.uid)
+    .set({fromUid:currentUser.uid, fromNick:olNick(), roomCode:code, ts:Date.now()});
+ }catch(e){
+  console.error("招待送信失敗:",e); olToast("招待の送信に失敗しました", true);
+  try{ await ref.delete(); }catch(_){}
+  OL.roomRef=null; INV.roomCode=null; olRenderMenu(); return;
+ }
+ // 既存の「相手待ち」と同じ待機画面
+ const bd=olPanel(`<div style="width:100%;text-align:center;padding:20px 8px">
+    <div style="font-size:20px;color:var(--gold);font-weight:bold;margin-bottom:12px">⚔️ 対戦に招待しました</div>
+    <div style="font-size:14px;margin-bottom:6px"><b>${escapeHTML(friendNick)}</b> さんに招待を送りました。</div>
+    <div style="font-size:13px;color:var(--dim);margin-bottom:16px">相手の参加を待っています… ⏳</div>
+    <button id="olInvCancel" style="font-size:14px;padding:10px 22px">キャンセル</button></div>`);
+ bd.querySelector("#olInvCancel").onclick=olInviteCancel;
+ // 相手が参加(room matched)したら既存フローで対戦開始
+ OL.unsub=ref.onSnapshot(snap=>{
+  if(!snap.exists) return;
+  const d=snap.data()||{};
+  if(d.status==="matched" && d.matchId){
+   const mid=d.matchId;
+   olCleanupListeners();
+   try{ fbDB.collection("users").doc(friendUid).collection("invites").doc(currentUser.uid).delete(); }catch(e){}
+   ref.delete().catch(e=>console.error("招待room削除失敗:",e));
+   OL.roomRef=null; INV.roomCode=null;
+   olGoMatch(mid);
+  }
+ }, err=>console.error("招待room購読エラー:",err));
+}
+async function olInviteCancel(){
+ olCleanupListeners();
+ const friendUid=INV.friendUid;
+ try{ if(friendUid) await fbDB.collection("users").doc(friendUid).collection("invites").doc(currentUser.uid).delete(); }catch(e){ console.error("招待掃除失敗:",e); }
+ try{ if(OL.roomRef){ await OL.roomRef.delete(); OL.roomRef=null; } }catch(e){ console.error("招待room掃除失敗:",e); }
+ INV.friendUid=null; INV.roomCode=null;
+ olRenderMenu();
+}
+
+/* --- 招待される側: invites 購読 + ポップアップ --- */
+let INVBOX={unsub:null, pending:[], popup:null, currentId:null};
+function startInviteInbox(){
+ stopInviteInbox();
+ if(!fbDB||!currentUser)return;
+ INVBOX.unsub=fbDB.collection("users").doc(currentUser.uid).collection("invites")
+   .onSnapshot(snap=>olHandleInvites(snap), err=>console.error("招待購読失敗",err));
+}
+function stopInviteInbox(){
+ if(INVBOX.unsub){ try{INVBOX.unsub();}catch(e){} INVBOX.unsub=null; }
+ INVBOX.pending=[]; olHideInvitePopup();
+}
+function olHandleInvites(snap){
+ const now=Date.now(), me=currentUser&&currentUser.uid;
+ const pending=[];
+ snap.forEach(doc=>{
+  const d=doc.data()||{}; const fromUid=d.fromUid||doc.id; const ts=Number(d.ts)||0;
+  if(ts && (now-ts)>INVITE_TTL_MS){ // 古い招待は自動掃除
+   if(me)fbDB.collection("users").doc(me).collection("invites").doc(doc.id).delete().catch(()=>{});
+   return;
+  }
+  pending.push({id:doc.id, fromUid, fromNick:d.fromNick||"フレンド", roomCode:d.roomCode||null, ts});
+ });
+ pending.sort((a,b)=>b.ts-a.ts);
+ INVBOX.pending=pending;
+ // 表示中の招待が取り消された(招待者がキャンセル)ら閉じる
+ if(INVBOX.popup && INVBOX.currentId && !pending.some(p=>p.id===INVBOX.currentId)) olHideInvitePopup();
+ olMaybeShowInvite();
+}
+// 対戦中以外なら最新の保留招待をポップアップ表示(対戦中は保持し、対戦後に提示)
+function olMaybeShowInvite(){
+ if(!currentUser) return;
+ if(olMatchInProgress()||ONLINE.active) return; // 対戦中は割り込まない
+ if(INVBOX.popup) return;                        // 既に表示中(処理後に次を出す)
+ const p=(INVBOX.pending||[])[0];
+ if(!p) return;
+ olShowInvitePopup(p);
+}
+function olShowInvitePopup(inv){
+ olHideInvitePopup();
+ INVBOX.currentId=inv.id;
+ const el=document.createElement("div");
+ el.id="invPopup";
+ el.style.cssText="position:fixed;left:50%;bottom:80px;transform:translateX(-50%);z-index:100000;padding:16px 20px;border-radius:12px;background:#1c2432;border:1px solid #3a4a66;box-shadow:0 6px 24px rgba(0,0,0,.55);max-width:92vw;text-align:center;color:#fff";
+ el.innerHTML=`<div style="font-size:14px;margin-bottom:12px">⚔ <b>${escapeHTML(inv.fromNick)}</b> さんが対戦に招待しています</div>
+   <div style="display:flex;gap:10px;justify-content:center">
+     <button id="invAccept" class="primary" style="font-size:13px;padding:8px 20px">受ける</button>
+     <button id="invDecline" style="font-size:13px;padding:8px 18px">断る</button>
+   </div>`;
+ document.body.appendChild(el);
+ INVBOX.popup=el;
+ el.querySelector("#invAccept").onclick=()=>olAcceptInvite(inv);
+ el.querySelector("#invDecline").onclick=()=>olDeclineInvite(inv);
+}
+function olHideInvitePopup(){
+ if(INVBOX.popup){ try{INVBOX.popup.remove();}catch(e){} INVBOX.popup=null; }
+ INVBOX.currentId=null;
+}
+async function olDeclineInvite(inv){
+ olHideInvitePopup();
+ try{ await fbDB.collection("users").doc(currentUser.uid).collection("invites").doc(inv.id).delete(); }catch(e){ console.error("招待拒否失敗:",e); }
+ olToast("招待を断りました");
+ olMaybeShowInvite();
+}
+function olAcceptInvite(inv){
+ olHideInvitePopup();
+ stopFriendsListeners();          // フレンド画面が開いていれば購読解除
+ INV.roomCode=inv.roomCode; INV.friendUid=inv.fromUid; INV.friendNick=inv.fromNick;
+ OL.deck=null;
+ olRenderDeckSelect(()=>olAcceptJoin(inv)); // デッキ選択→参加
+}
+async function olAcceptJoin(inv){
+ if(!OL.deck) return;
+ const code=(inv.roomCode||"").trim().toUpperCase();
+ if(!code){ olInviteExpired(inv); return; }
+ olRenderWaiting(`${escapeHTML(inv.fromNick)}さんの対戦に参加しています…`, ()=>{ olCleanupListeners(); olRenderMenu(); });
+ try{
+  const mid=await olJoinRoomCore(code); // 合言葉参加と同一処理でルーム参加
+  try{ await fbDB.collection("users").doc(currentUser.uid).collection("invites").doc(inv.id).delete(); }catch(e){}
+  olGoMatch(mid);
+ }catch(e){
+  console.error("招待参加失敗:",e); // ルームが無い/閉じている → 期限切れ
+  olInviteExpired(inv);
+ }
+}
+async function olInviteExpired(inv){
+ try{ await fbDB.collection("users").doc(currentUser.uid).collection("invites").doc(inv.id).delete(); }catch(e){}
+ olToast("招待は期限切れです", true);
+ olRenderMenu();
+}
+async function olRemoveFriend(friendUid, row){
+ if(!fbDB||!currentUser)return;
+ if(!confirm("このフレンドを解除しますか?"))return;
+ try{
+  await fbDB.collection("users").doc(currentUser.uid).collection("friends").doc(friendUid).delete();
+  try{ await fbDB.collection("users").doc(friendUid).collection("friends").doc(currentUser.uid).delete(); }catch(e){} // 相互解除(不可でも自分側は解除済)
+  if(row)row.remove();
+  olToast("フレンドを解除しました");
+ }catch(e){ console.error("フレンド解除失敗",e); olToast("解除に失敗しました", true); }
+}
 /* 対戦成績・履歴モーダル(直近20件) */
 async function showStatsHistory(){
  const m=$("acctMenu"); if(m)m.classList.remove("on");
  if(!currentUser||!fbDB){ alert("ログインが必要です"); return; }
  showModal("対戦成績", `<div style="text-align:center;padding:6px 4px"><div style="font-size:20px;color:var(--gold);font-weight:bold;margin-bottom:6px">${olStatsLabel()}</div><div id="histBox" style="color:var(--dim);font-size:12px;margin-top:10px">履歴を読み込み中…</div></div>`);
  try{
+  // 既にフレンドの相手はボタンを「フレンド済」に切替えるため、自分のフレンド一覧を先に取得
+  const friendSet=new Set();
+  try{ const fs=await fbDB.collection("users").doc(currentUser.uid).collection("friends").get(); fs.forEach(d=>friendSet.add(d.id)); }catch(e){}
   const snap=await fbDB.collection("users").doc(currentUser.uid).collection("history").orderBy("endedAt","desc").limit(20).get();
   const rows=[];
   snap.forEach(doc=>{ const h=doc.data()||{};
@@ -4983,10 +5307,21 @@ async function showStatsHistory(){
    // 棋譜再生: matchId(なければドキュメントID=matchId)から seed/デッキ/moves を読み最初から再生する
    const mid=h.matchId||doc.id;
    const rp=mid?`<button onclick="olReplayFinishedMatch('${escapeHTML(String(mid))}')" style="font-size:11px;padding:2px 8px;white-space:nowrap" title="この対戦を最初から棋譜再生">▶ 再生</button>`:"";
-   rows.push(`<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:5px 4px;border-bottom:1px solid #2a3040;font-size:12px"><span>${res} vs ${escapeHTML(h.opponentNickname||"相手")}</span><span style="display:flex;gap:8px;align-items:center"><span style="color:var(--dim)">${escapeHTML(h.myDeckName||"")} ${rsn}</span>${rp}</span></div>`);
+   // フレンド申請ボタン: 相手uidが履歴に記録されている場合のみ表示(古い履歴=opponentUidなし → 非表示)。自分自身にも出さない。
+   const oUid=h.opponentUid;
+   let fb="";
+   if(oUid && oUid!==currentUser.uid){
+    fb=friendSet.has(oUid)
+      ? `<button disabled style="font-size:11px;padding:2px 8px;white-space:nowrap;opacity:.6">フレンド済</button>`
+      : `<button class="frReqBtn" data-fuid="${escapeHTML(oUid)}" data-fnick="${escapeHTML(h.opponentNickname||"相手")}" style="font-size:11px;padding:2px 8px;white-space:nowrap">＋フレンド</button>`;
+   }
+   rows.push(`<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:5px 4px;border-bottom:1px solid #2a3040;font-size:12px"><span>${res} vs ${escapeHTML(h.opponentNickname||"相手")}</span><span style="display:flex;gap:6px;align-items:center"><span style="color:var(--dim)">${escapeHTML(h.myDeckName||"")} ${rsn}</span>${fb}${rp}</span></div>`);
   });
   const box=$("histBox");
-  if(box)box.innerHTML=rows.length?`<div style="text-align:left;max-width:420px;margin:0 auto">${rows.join("")}</div>`:'<div style="color:var(--dim)">対戦履歴はまだありません</div>';
+  if(box){
+   box.innerHTML=rows.length?`<div style="text-align:left;max-width:440px;margin:0 auto">${rows.join("")}</div>`:'<div style="color:var(--dim)">対戦履歴はまだありません</div>';
+   box.querySelectorAll(".frReqBtn").forEach(b=>{ b.onclick=()=>olSendFriendRequest(b.getAttribute("data-fuid"), b.getAttribute("data-fnick"), b); });
+  }
  }catch(e){ console.error(e); const box=$("histBox"); if(box)box.innerHTML='<div style="color:#e88a8a">履歴の取得に失敗しました</div>'; }
 }
 /* ===== 成績履歴からの棋譜再生(読み取り専用): matches/{id} の seed/デッキ/firstUid と moves(seq順)を読み、
@@ -5261,6 +5596,7 @@ function initAuth(){
   currentProfile=user?await loadOrCreateProfile(user):null;
   renderAccount();
   await syncDecksForUser(user);              // ログイン/ログアウトでデッキキャッシュを同期(初回はlocalStorageから移行)
+  if(user){ startPresence(); startInviteInbox(); } else { stopPresence(); stopFriendsListeners(); stopInviteInbox(); }  // 在席ハートビート＋招待受信(ログイン中のみ)
   if(HOME_OPEN)showHome();                    // ホーム表示中ならログイン状態に合わせて再描画
  });
  document.addEventListener("click",()=>{const m=$("acctMenu");if(m)m.classList.remove("on");});
