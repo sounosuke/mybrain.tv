@@ -1716,6 +1716,11 @@ const FX={
 3:{statSelf:u=>areaOf(u)==="center"?1000:areaOf(u)==="enemy"?2000:0},
 5:{haste:true,eotGrave:true},
 8:{onWin:async(u,cx)=>{
+  // 中央投下(playedCenter)で勝ったユニットは中央特攻でバトル終了時に破壊される。その破壊(掃き出し)は
+  // この onWin 解決より前に走るため、破壊済みのユニットをここで移動させて復活させてはならない。
+  // 通常移動で中央/敵陣に入って勝った場合(playedCenter=false)は生存しており、移動できる。
+  const live=onGridAnywhere(u)||G.battles.some(b=>b.intruder===u&&!u.gone);
+  if(!live)return;
   const ds=adjSquares(u.r,u.c).filter(([r,c])=>!uAt(r,c));
   if(!ds.length)return;
   let d;

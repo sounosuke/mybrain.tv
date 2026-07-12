@@ -311,7 +311,7 @@ catch(e){ console.error("Firebase init 失敗:",e); }
 
 <script>
 "use strict";
-const GAME_VERSION="P3.19 AI-TEST (新AI v9) — 実験ビルド";
+const GAME_VERSION="P3.19 AI-TEST (新AI v11) — 実験ビルド";
 const KIFU_FMT=2; // 棋譜の記録フォーマット版(記録項目を増やしたら上げる。読込時に不一致なら警告)
 /* ============ カードデータ ============ */
 const CARDS={};
@@ -1716,6 +1716,11 @@ const FX={
 3:{statSelf:u=>areaOf(u)==="center"?1000:areaOf(u)==="enemy"?2000:0},
 5:{haste:true,eotGrave:true},
 8:{onWin:async(u,cx)=>{
+  // 中央投下(playedCenter)で勝ったユニットは中央特攻でバトル終了時に破壊される。その破壊(1496の掃き出し)は
+  // この onWin 解決より前に走るため、破壊済みのユニットをここで移動させて復活させてはならない。
+  // 通常移動で中央/敵陣に入って勝った場合(playedCenter=false)は生存しており、移動できる。
+  const live=onGridAnywhere(u)||G.battles.some(b=>b.intruder===u&&!u.gone);
+  if(!live)return;
   const ds=adjSquares(u.r,u.c).filter(([r,c])=>!uAt(r,c));
   if(!ds.length)return;
   let d;
@@ -6486,6 +6491,200 @@ deckArchetype=function(p){
 };
 // ==== end 新AI v9 ====
 
+// ==== 新AI v10: 迎撃キャパ・モデル(熟練者指摘: 迎撃は"安いブロッカー・ユニット"で行う。手札とエネは受けのために残す) ====
+//  前提(エンジン実機で確認済みの迎撃機構):
+//   ・防御=ブロッカーの"配置"。相手の移動(=攻撃)先スクエアに自軍ユニットが居れば enterSquare が G.pendingBattle を張り
+//     runBattle でバトル。相手ターンの優先(priorityRound)では非能動側もクイックS(冥界の門80/生命の門200)をフラッシュでき、
+//     空き自陣スクエアへ墓地/エネからブロッカーをリリースして迎撃に使える。
+//   ・冥界の通廊68(lineWinDeath): その列でバトルに"勝った"ユニットは終了時に墓地へ。よって安いキラー41(黒1=1エネ,4000,勝利時自壊)
+//     で受ければ、相手アタッカーが勝っても68で墓地に落ち、キラーも墓地へ→ミュラー48でリサイクル。=「1手札+1エネで1スマッシュ阻止」。
+//   ・ミュラー48(pig): 死亡時に墓地のコスト3以下ユニットを手札へ(キラー41回収)→残エネで再展開して更に1体迎撃。
+//   ・門80/200: 相手ターンにフラッシュしてブロッカーを場に出す=迎撃サモン。
+//  よってAIの生存/リザーブは「エネ床2」ではなく「相手の脅威の"数"を、安ブロッカー+エネ+68+リサイクルで何体止められるか(迎撃キャパ)」で判断する。
+var EV10=(typeof EV10!=="undefined"&&EV10)?EV10:{
+  on:1,          // 1=v10迎撃キャパON(0でv9相当=前後比較トグル)
+  capReserve:1,  // 1=リザーブ目標を「脅威数を止めるのに要る安ブロッカー展開エネ」基準へ置換(v9の flat reserveMin を置換)
+  survCap:1,     // 1=evSurvival.interception を迎撃キャパ(体数ベース)へ差し替え(deficit/lethal意味は保持)
+  survCapAggroGate:1, // 1=速アグロ相手のみ従来の悲観生存(受け脳)を維持=survCap非適用(赤単の受けを崩さない)
+  flashDef:1,    // 1=防御側(相手ターン)の門80/200フラッシュ/安ブロッカー配置=迎撃実行を加点
+  wCap:1.2,      // interception 1体あたりの生存寄与(旧 blockers*1.2 と整合)
+  flashW:9.0,    // 迎撃実行手(門フラッシュ等)への加点
+  flashPlayU:0,  // 1=相手ターンに安ブロッカーを壁配置する手も加点(緑で誤配置=既定0)
+  exposureW:5.0, // 迎撃キャパが脅威数に届かない露出への減点(1体あたり)
+  reserveFloor:2, // 脅威が有る時に最低限温存するエネ床(v9互換=大型少数の緑等でキャパ数の過小評価を防ぐ)
+  reserveMax:3   // 迎撃用に温存する最大エネ(アグロで過剰温存し展開が死ぬのを防ぐ)
+};
+function ev10On(){ return !!(EV10&&EV10.on); }
+// 安いブロッカー: キラー41最優先。低コスト(≤2)でパワー2000+ or sm0の壁ボディ(1000+)。
+function ev10IsCheapBlocker(no){ var c=CARDS[no]; if(!c||c.type!=="U") return false;
+  if(no===41) return true;
+  return totalCost(no)<=2 && (((c.pow||0)>=2000) || (((c.sm||0)===0)&&((c.pow||0)>=1000))); }
+function ev10DeployCost(no){ try{ return parseCost(CARDS[no].play).total||1; }catch(e){ return 1; } }
+// 通廊68が(自軍/相手いずれかの列に)設置済みか
+function ev10CorridorSet(pi){ try{ for(var c=0;c<3;c++){ var b=G.bases[pi][c]; if(b&&FX[b.no]&&FX[b.no].lineWinDeath) return true;
+   var b2=G.bases[other(pi)][c]; if(b2&&FX[b2.no]&&FX[b2.no].lineWinDeath) return true; } }catch(e){} return false; }
+// 相手の"到達アタッカー数"(次ターンにスマッシュしうる敵ユニット体数, 相手エネ予算内で貪欲に到達させる)
+function evThreatCount(pi){ try{ var opp=other(pi), enemyRow=homeRow(pi), budget=G.pl[opp].energy.length, chunks=[];
+  units().forEach(function(u){ if(u.ctrl!==opp) return; if(!(u.d&&u.d.sm!=null)) return; if((smVal(u)||0)<=0 && (u.d.sm||0)<=0) return;
+    if(u.r===enemyRow){ chunks.push(0); return; }
+    if(!u.d.move){ if(u.r===2) chunks.push(0); return; }
+    var mv=parseCost(u.d.move).total||1; chunks.push(u.r===2?0:mv*Math.abs(u.r-2)); });
+  chunks.sort(function(a,b){return a-b;}); var n=0;
+  for(var i=0;i<chunks.length;i++){ if(chunks[i]<=budget){ budget-=chunks[i]; n++; } }
+  try{ var od=allNos(G.pl[opp]); if(od.some(function(no){return [80,160,200].indexOf(no)>=0||(FX[no]&&(FX[no].haste||FX[no].convoke));}) && budget>=3) n+=1; }catch(e){}
+  return n; }catch(e){ return maxSmashAgainst(pi); } }
+// 迎撃キャパ: 安ブロッカー(特にキラー41)+使用可能エネ+通廊68+リサイクル(ミュラー48/門80/門200)で敵アタッカーを何体止められるか
+function evInterceptCapacity(pi){
+ var p=G.pl[pi]; var energy=relEnergy(p).length+relSmash(p).length; var e=energy;
+ var corridor=ev10CorridorSet(pi);
+ var boardWalls=0; units().forEach(function(u){ if(u.ctrl===pi&&!u.frozen&&(u.r===homeRow(pi)||u.r===2)&&effPow(u)>=2000) boardWalls++; });
+ var handCheap=[]; p.hand.forEach(function(no){ if(ev10IsCheapBlocker(no)) handCheap.push(ev10DeployCost(no)); });
+ handCheap.sort(function(a,b){return a-b;});
+ var muller=units().some(function(u){return u.ctrl===pi&&u.no===48&&!u.frozen;})||p.hand.indexOf(48)>=0;
+ var killerRecyclable=p.grave.filter(function(no){return no===41;}).length + handCheap.length;
+ var gate80=p.hand.indexOf(80)>=0 && p.grave.some(function(no){return CARDS[no]&&CARDS[no].type==="U";});
+ var gate200=p.hand.indexOf(200)>=0 && p.energy.some(function(en){return CARDS[en.no]&&CARDS[en.no].type==="U";});
+ var cap=boardWalls, recy=0, gates=0, deployed=0;
+ for(var i=0;i<handCheap.length;i++){ var c=corridor?Math.min(handCheap[i],1):handCheap[i]; if(e>=c){ e-=c; cap++; deployed++; } }
+ if(muller && killerRecyclable>0 && e>=1){ e-=1; cap++; recy++; }      // ミュラー→キラー回収→再展開(=リサイクル1体)
+ if(gate80 && e>=1){ e-=1; cap++; gates++; }                            // 冥界の門80フラッシュ(墓地→場)
+ if(gate200 && e>=1){ e-=1; cap++; gates++; }                           // 生命の門200フラッシュ(エネ→場)
+ return {capacity:cap, energy:energy, corridor:corridor, boardWalls:boardWalls, handCheap:handCheap.length, recycle:recy, gates:gates, deployed:deployed};
+}
+// evSurvival.interception を迎撃キャパ(実際に受けられる体数)へ差し替え。deficit/lethal の意味(clockFast時のみ致死)は保つ。
+var _origEvSurvival_EV10=evSurvival;
+evSurvival=function(pi){
+ var S=_origEvSurvival_EV10(pi);
+ try{ if(ev10On() && EV10.survCap && !(EV10.survCapAggroGate && (function(){try{return evOppFastAggro(pi);}catch(e){return false;}})())){
+   var IC=evInterceptCapacity(pi);
+   var interception=IC.capacity*EV10.wCap + S.react.length*2;    // 体数ベース迎撃キャパ + 反応(バトルトリック)札
+   var netIncoming=Math.max(0, S.oppCeiling - interception);
+   var deficit=netIncoming - S.lifeHeadroom;
+   S.interception=interception; S.netIncoming=netIncoming; S.deficit=deficit;
+   S.capacity=IC.capacity; S.threatCount=evThreatCount(pi);
+   S.lethal=(deficit>=0 && S.clockFast);
+ } }catch(e){}
+ return S;
+};
+// リザーブ目標を迎撃キャパ基準へ置換: 相手の脅威"数"を止めるのに要る安ブロッカー展開エネ(通廊有りなら1エネ/体)を温存する。
+var _origEv9Reserve_EV10=ev9ReservePenalty;
+ev9ReservePenalty=function(pi,a,timing){
+ if(!(ev10On()&&EV10.capReserve)) return _origEv9Reserve_EV10(pi,a,timing);
+ if(!EV9.reserve||EV_SIM) return 0;
+ if(timing!=="main"||G.ap!==pi) return 0;                    // 自メイン(直後に相手ターン)だけ迎撃余力を温存
+ var p=G.pl[pi], opp=G.pl[other(pi)];
+ var oppCeiling=maxSmashAgainst(pi); if(oppCeiling<1) return 0;         // 脅威が無ければ展開優先
+ var oppRoom=7-opp.smash.length; if(maxSmashAgainst(other(pi))>=oppRoom) return 0; // 今ターン自分がリーサル=温存しない
+ var lifeHeadroom=7-p.smash.length;
+ var energyRel=relEnergy(p).length+relSmash(p).length; if(energyRel<1) return 0;
+ var IC=evInterceptCapacity(pi);
+ var threat=evThreatCount(pi);
+ // 生存に必要な"止める体数": 脅威数。ただし残ライフ−bufferぶんの被弾は許容できる(過剰な籠りを防ぐ)。
+ var perHit=(threat>0)?Math.max(1,Math.round(oppCeiling/threat)):1;    // 1体あたり平均スマッシュ
+ var allowHits=Math.max(0, Math.floor((lifeHeadroom-EV9.buffer)/perHit));
+ var need=Math.max(0, threat - allowHits);
+ if(need<=0) return 0;
+ var c=ev9Consume(pi,a);
+ var energyAfter=Math.max(0,energyRel-c.energyTapped);
+ var perBody=IC.corridor?1:2;                                          // 通廊有りなら1エネ/体
+ var needDeploy=Math.max(0, need - IC.boardWalls);                     // 盤面壁で足りるぶんは追加展開不要
+ var reserveTarget=Math.min(EV10.reserveMax, needDeploy*perBody);
+ reserveTarget=Math.max(reserveTarget, Math.min(EV10.reserveFloor||0, energyRel)); // 脅威時は最低でも床ぶん温存
+ reserveTarget=Math.min(reserveTarget, energyRel);
+ var pen=0;
+ var shortfall=reserveTarget-energyAfter;                             // 迎撃展開エネを割るぶん=タップアウト
+ if(shortfall>0){ var scale=c.blockerGain?0.35:1.0; pen += EV9.tapoutW*shortfall*scale; }
+ var exposure=need-IC.capacity;                                       // 迎撃キャパが脅威数に届かない=露出
+ if(exposure>0) pen += EV10.exposureW*Math.min(exposure,2);
+ if(c.reactiveLost>0) pen += EV9.reactW;                              // 反応札の温存
+ return pen;
+};
+// 迎撃実行の加点: 自分が防御側(相手ターン=G.ap!==pi)で到達脅威がある時、門80/200フラッシュ/安ブロッカー配置=迎撃を優先させる。
+var _origAiScore_EV10=aiScore;
+aiScore=function(pi,a,timing){
+ var s=_origAiScore_EV10(pi,a,timing);
+ try{ if(ev10On()&&EV10.flashDef && a && G.ap!==pi && maxSmashAgainst(pi)>=1){
+   if(a.t==="playS" && (a.no===80||a.no===200)) s += EV10.flashW;               // 門で墓地/エネからブロッカーをフラッシュ=迎撃サモン
+   else if(EV10.flashPlayU && a.t==="playU" && ev10IsCheapBlocker(a.no)) s += EV10.flashW*0.6; // (既定off)相手ターンの安ブロッカー壁配置
+ } }catch(e){}
+ return s;
+};
+// ==== 新AI v11: (1) チャージ(充填)で冥界の通廊(68)を絶対にエネへ埋めない  (2) 自通廊下でペガサス(125/129)を主砲評価+離脱リサイクル ====
+//  修正1(最優先/実機の"ありえない"ミス): 充填フェイズのカード選択 aiEnergyChoice は基盤エンジン側にあり、v8〜v10の
+//   メインフェイズ改良(プラン更新で捨てない/ベース設置優先)の対象外だった。通廊ペガサスの手札に68(黒2無2=コスト4)がある時、
+//   aiEnergyChoice の「当面出せない過剰コストの非ユニット(cost>energyN+3)」枝が ターン1(energyN=0) で68をマナに埋めていた
+//   (=デッキ最強エンジンをマナに沈める論外ミス)。→ aiEnergyChoice を包み、68をエネ候補から常に除外。
+//   68以外に埋められる札があれば必ずそちらを埋め、手札が全て68なら null(温存=埋めない)。68はメインで必ずベース設置(v7/v8ロジック)。
+//   ※他の"埋めてはいけない札"は最小限に留める(161はエネに置いてもよい=生命の門200で釣る前提。68のみ絶対不可)。
+//  修正2(熟練者の攻め筋): 自分の冥界の通廊(68)が場にある時、ペガサス(125/129)は"勝たない/離脱で回避"ので通廊で自壊せず、
+//   逆に相手ブロッカーは勝って通廊で死ぬ=ペガサスが最強アタッカー。161が場にあれば離脱コスト白1を任意色(残エネ全部)で払え、
+//   残りエネ分"何回でも回避"して殴り続けられる。→ 攻撃位置(中央/敵陣)のペガサスと離脱の使用を離脱余力に応じて主砲評価(純加点)。
+//   非ペガサスの中央攻撃は通廊で自壊しうるため加点しない(受け/リアニメ役は既存評価に委ねる)。v8〜v10の維持ルールは非改変。
+
+// --- (1) チャージAI: 冥界の通廊(68)をエネ候補から除外 ---
+var EV11_ENGINE_NOFILL=new Set([68]); // 絶対にエネへ埋めてはならないエンジン札(冥界の通廊)。68は通廊ペガサスにしか無いので全席安全。
+if(typeof aiEnergyChoice!=="undefined"){
+ var _origAiEnergyChoice_EV11=aiEnergyChoice;
+ aiEnergyChoice=function(p){
+  try{
+   if(p && p.isAI && p.hand && p.hand.some(function(no){return EV11_ENGINE_NOFILL.has(no);})){
+    var keep=p.hand.filter(function(no){return !EV11_ENGINE_NOFILL.has(no);});
+    if(!keep.length) return null;                 // 手札が全てエンジン札(68のみ) → 埋めない(温存)
+    var real=p.hand;
+    try{ p.hand=keep; return _origAiEnergyChoice_EV11(p); } // 68を除いた仮想手札で選ぶ=68は絶対に選ばれない
+    finally{ p.hand=real; }
+   }
+  }catch(e){}
+  return _origAiEnergyChoice_EV11(p);
+ };
+}
+
+// --- (2) ペガサス主砲/離脱リサイクル ---
+var EV11_PEGON=parseInt((typeof process!=="undefined"&&process.env&&process.env.EV11_PEGON)||"1"); // 1=ペガサス主砲加点ON(既定)。0でv10相当(加点なし)=前後比較トグル。
+// 自分の冥界の通廊(68=lineWinDeath)が自軍ベースに設置済みか(自軍主砲判断なので相手の68は含めない)。
+function ev11MyCorridor(pi){ try{ for(var c=0;c<3;c++){ var b=G.bases[pi][c]; if(b&&FX[b.no]&&FX[b.no].lineWinDeath) return true; } }catch(e){} return false; }
+// ペガサスが残りエネで離脱(白1)を繰り返せる回数≒殴り続けられる回数。161(色全通)が安全にあれば残エネ全部を白1に充当可。
+function ev11EscapeBudget(pi){ try{ var p=G.pl[pi]; var rel=relEnergy(p).length+relSmash(p).length;
+  if(evHasSafeShabon(pi)) return rel;             // 161=任意色 → 残エネ全部を離脱に使える
+  var white=0; for(var i=0;i<p.energy.length;i++){ var e=p.energy[i]; if(!e.frozen&&CARDS[e.no]&&CARDS[e.no].col==="白") white++; } return white;
+ }catch(e){ return 0; } }
+// 結果盤面評価(クローン経路)へ、自通廊下のペガサス主砲ボーナスを純加点(既存の生存/受け/リザーブ評価は完全維持)。
+var _origEvBoardValue_EV11=evBoardValue;
+evBoardValue=function(pi){
+ var V=_origEvBoardValue_EV11(pi);
+ try{
+  if(EV11_PEGON && !G.over && ev11MyCorridor(pi)){
+   var oppHome=homeRow(other(pi)), esc=ev11EscapeBudget(pi), bonus=0;
+   for(var i=0,us=units();i<us.length;i++){ var u=us[i]; if(u.ctrl!==pi) continue;
+    if((u.no===125||u.no===129) && (u.r===2||u.r===oppHome)){
+     bonus += 3 + (smVal(u)||0) + Math.min(esc,3)*1.2;   // 攻撃位置のペガサス+離脱余力で"殴り続け"を選好
+    }
+   }
+   V += bonus;
+  }
+ }catch(e){}
+ return V;
+};
+// 全ライブ決定(クローン非依存経路も含む)へ、ペガサスを攻撃位置へ進める手/離脱能力を純加点。
+var _origAiScore_EV11=aiScore;
+aiScore=function(pi,a,timing){
+ var s=_origAiScore_EV11(pi,a,timing);   // 先に原関数(a.to/a.sq解決の副作用を保つ)
+ try{
+  if(EV11_PEGON && a && !EV_SIM && ev11MyCorridor(pi)){
+   var oppHome=homeRow(other(pi)), esc=ev11EscapeBudget(pi);
+   if(a.t==="move"){ var u=units().find(function(x){return x.uid===a.uid;});
+    if(u&&(u.no===125||u.no===129)){ var to=a.to||(a.dests&&a.dests[0]);
+     if(to&&(to[0]===2||to[0]===oppHome)) s += 1.2 + Math.min(esc,3)*0.5; } }   // ペガサスを主砲として前進
+   else if(a.t==="playU"&&(a.no===125||a.no===129)){ var sq=a.sq||(a.sqs&&a.sqs[0]);
+    if(sq&&(sq[0]===2||sq[0]===oppHome)) s += 0.8 + Math.min(esc,3)*0.4; }       // ペガサスを攻撃位置に展開
+   else if(a.t==="abil"){ var uu=units().find(function(x){return x.uid===a.uid;});
+    if(uu&&(uu.no===125||uu.no===129)) s += 1.0 + Math.min(esc,3)*0.5; }         // 離脱を残りエネで積極使用(既存+6に上乗せ)
+  }
+ }catch(e){}
+ return s;
+};
+// ==== end 新AI v11 ====
+
 const _origChooseActionImpl_EV3=chooseActionImpl;
 chooseActionImpl=async function(pi,acts,timing){
  const p=G.pl[pi];
@@ -6563,7 +6762,7 @@ EVALAI.on=true;
  function addBadge(){ try{
    if(document.getElementById("aiTestBadge")) return;
    const b=document.createElement("div"); b.id="aiTestBadge";
-   b.textContent="実験AIビルド: 新AI v9";
+   b.textContent="実験AIビルド: 新AI v11";
    b.style.cssText="position:fixed;left:6px;bottom:6px;z-index:99999;background:#7a1030;color:#ffd7e2;font:11px/1.4 sans-serif;padding:3px 8px;border:1px solid #ff6b95;border-radius:6px;opacity:.85;pointer-events:none";
    (document.body||document.documentElement).appendChild(b);
  }catch(e){} }
