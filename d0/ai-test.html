@@ -5630,6 +5630,92 @@ if(typeof document!=="undefined"&&document.getElementById("board")){if($("verLbl
 var EVALAI=(typeof EVALAI!=="undefined"&&EVALAI)?EVALAI:{on:false,seats:new Set()};
 function evNewAI(pi){ return EVALAI.on && EVALAI.seats && EVALAI.seats.has(pi); }
 
+// ============================================================
+//  バグ修正 (v3 hotfix): 生命の門(200)/冥界の門(80) の X=0 no-op 再選択ループを根絶
+//  症状: 新AIが「払える X≥1 の対象」が無い状況で門を"プレイ"に選び、aiX が 0 を返して
+//        「(X=0では対象がありません)」で不発 → 盤面が変わらないため同じ手を延々と再選択し、
+//        actGuard>200 で「行動上限に達したためフェイズ終了」=ターン空費。
+//  根因: 本体 strategyExtraOK(no===200) は「エネにユニット有り+空きマス」しか検査せず、
+//        払える X≥1 対象の実在を見ない(冥界の門80は totalCost<=mx 検査済みで元々安全)。本体エンジンは非改変。
+//  対策1: legalActions を包み、新AI席の候補から「払える X≥1 対象が実在しない門プレイ」を除外。
+//  対策2(汎用): 実行手が盤面/スタックを一切変えない(no-op/不発)なら、盤面が変わるまで同じ手を再選択しない
+//              (performAction を包んで記録 → legalActions で除外)。万一他の無効手が出ても無限連呼にならない。
+// ============================================================
+// 門(200/80)に「払える X≥1 の実対象」があるか(= aiX が 1 以上を返し不発にならないか)。
+function ev3GateHasValidTarget(pi,no){
+ try{
+  const p=G.pl[pi], d=CARDS[no]; if(!d) return false;
+  const mx=maxXFor(p,parseCost(d.play)); if(mx<1) return false;     // X≥1 を払えない
+  if(![0,1,2].some(c2=>!uAt(homeRow(pi),c2))) return false;         // 出す空きスクエアが無い
+  if(no===200) return p.energy.some(e=>{ const c=CARDS[e.no]; return c&&c.type==="U"&&totalCost(e.no)>=1&&totalCost(e.no)<=mx; }); // エネのコスト1〜X以下
+  if(no===80)  return p.grave .some(x=>{ const c=CARDS[x];    return c&&c.type==="U"&&totalCost(x)  >=1&&totalCost(x)  <=mx; }); // 墓地のコスト1〜X以下
+  return true;
+ }catch(e){ return false; }
+}
+function ev3IsInvalidGate(pi,a){
+ return !!a && a.t==="playS" && (a.no===200||a.no===80) && !ev3GateHasValidTarget(pi,a.no);
+}
+// no-op ループ防止: 盤面シグネチャ(行動が盤面/スタックを進めたか検知)と、盤面不変で不発だった行動の記録。
+let _ev3Noop={sig:null,tried:new Set()};
+function ev3BoardSig(){
+ try{
+  let s=(G.turnNo||0)+"|"+(G.phase||"")+"|"+(G.ap==null?"-":G.ap)+"|";
+  const parts=[]; for(const u of units()) parts.push(u.uid+"@"+u.r+","+u.c+":"+u.no+"/"+(u.dmg||0)+(u.frozen?"F":""));
+  parts.sort(); s+=parts.join(";")+"|";
+  for(let i=0;i<2;i++){ const pl=G.pl[i]; if(!pl) continue;
+   s+="H"+pl.hand.length+"E"+pl.energy.length+"[EN:"+pl.energy.map(e=>e.no+(e.frozen?"f":"")).join(",")+"]G"+pl.grave.length+"S"+pl.smash.length+"P"+(pl.planUp?1:0)+","; }
+  let stk=0; for(const st of (G.stacks||[])) stk+=st.length;
+  s+="|K"+stk+"|B"+((G.battles&&G.battles.length)||0)+"|TQ"+((G.trigQ&&G.trigQ.length)||0);
+  return s;
+ }catch(e){ return null; }   // 失敗時は null → ガード無効化(誤ブロックしない)
+}
+function ev3ActSig(a){
+ if(!a) return "null";
+ let s=a.t+":"+(a.no!=null?a.no:"")+":"+(a.uid!=null?a.uid:"")+":"+(a.hi!=null?a.hi:"");
+ if(a.sq) s+=":sq"+a.sq[0]+","+a.sq[1];
+ if(a.col!=null) s+=":col"+a.col;
+ if(a.plan) s+=":plan";
+ return s;
+}
+// legalActions を包み、新AI席の候補から「無効な門」と「盤面不変で不発だった手」を除外(pass は常に残す)。
+const _origLegalActions_EV3=legalActions;
+legalActions=function(pi,timing){
+ let acts=_origLegalActions_EV3(pi,timing);
+ try{
+  const p=G.pl[pi];
+  if(p&&p.isAI&&evNewAI(pi)&&acts&&acts.length>1){
+   const cur=(!EV_SIM)?ev3BoardSig():null;
+   const useNoop=(!EV_SIM && cur!=null && _ev3Noop.sig!=null && _ev3Noop.sig===cur && _ev3Noop.tried.size>0);
+   const filt=acts.filter(a=>{
+    if(a.t==="pass") return true;
+    if(ev3IsInvalidGate(pi,a)) return false;
+    if(useNoop && _ev3Noop.tried.has(ev3ActSig(a))) return false;
+    return true;
+   });
+   if(filt.length) acts=filt;   // pass が必ず残るので filt.length>=1
+  }
+ }catch(e){}
+ return acts;
+};
+// performAction を包み、新AIの実行手が盤面/スタックを一切変えなければ(no-op/不発)、盤面が変わるまで封じる。
+const _origPerformAction_EV3=performAction;
+performAction=async function(pi,act){
+ const p=G.pl[pi];
+ const track=(!EV_SIM && p && p.isAI && evNewAI(pi) && act && act.t!=="pass");
+ let before=null; if(track) before=ev3BoardSig();
+ const ok=await _origPerformAction_EV3(pi,act);
+ if(track && before!=null){
+  let changed=(ok!==false);
+  if(changed){ const after=ev3BoardSig(); if(after!=null && after===before) changed=false; }
+  if(!changed){
+   if(_ev3Noop.sig!==before){ _ev3Noop.sig=before; _ev3Noop.tried=new Set(); }
+   _ev3Noop.tried.add(ev3ActSig(act));
+  }
+ }
+ return ok;
+};
+
+
 // 挙動計測用(sim ハーネスが reset/read する)。
 //  defensive = 生存脳(受け優先)が起動している決定数 = oppがアグロ(速いクロック)or 真の致死圏。
 //  lethal    = 真の致死圏(deficit>=0 かつ 速いクロック)の決定数。 v2Fire = v2の緩い定義(incoming>=myMax)。
