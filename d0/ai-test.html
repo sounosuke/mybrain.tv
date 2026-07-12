@@ -311,7 +311,7 @@ catch(e){ console.error("Firebase init 失敗:",e); }
 
 <script>
 "use strict";
-const GAME_VERSION="P3.19 AI-TEST (新AI v3) — 実験ビルド";
+const GAME_VERSION="P3.19 AI-TEST (新AI v6) — 実験ビルド";
 const KIFU_FMT=2; // 棋譜の記録フォーマット版(記録項目を増やしたら上げる。読込時に不一致なら警告)
 /* ============ カードデータ ============ */
 const CARDS={};
@@ -5615,10 +5615,37 @@ if(typeof document!=="undefined"&&document.getElementById("board")){if($("verLbl
 //  新AI v3 (状態クローン評価器) 統合ブロック  --  AI-TEST ビルド専用
 //  本体エンジンは非改変。ここで aiDecide/chooseActionImpl 等をモンキーパッチし、
 //  ボット(isAI)席の手選択にだけ v3 を効かせる。クローン評価はライブでも
-//  clone.headless=true + log/sleep のstub化で描画/DOM/待機の副作用を出さず、
+//  clone.headless=true + 両席isAI化 + log/sleep のstub化で描画/DOM/人間選択UI/待機の副作用を出さず、
 //  G・乱数・KREC・uidSeq を finally で完全復元する(本物のGと画面は汚さない)。
 // ============================================================
-// ==== 新AI v3: 状態クローン評価器 + 致死圏限定生存ゲート + 対ランプ・グラインド + シャボン玉枝刈り ====
+// ==== 新AI v6: v5 に「クローン評価のUIリーク根絶 + 門ターゲット運用ルール + 冥界の通廊(68)必ず設置」を追加 ====
+//  修正1(重大バグ): クローン先読み(evScoreCandidate/ロールフォワード)中に、相手(人間=isAI偽)の選択
+//    (例: 大巨人クレーター168の死亡時「相手はエネルギー1枚を墓地に置く」= oppEnergyLossFx→humanPickTargets)が
+//    本物のDOM(モーダル/プロンプト)へリークしていた。根因: 本体の人間選択関数は p.isAI で分岐し G.headless を見ないため、
+//    clone.headless=true だけでは相手選択UIを抑止できない。対策: (a) クローンは両席 isAI=true 化(EV_CLONE_ISAI)で
+//    あらゆる humanPick 分岐を自動(AIヒューリスティック)解決させ人間UIを一切呼ばない。(b) 保険として humanChoose/
+//    humanPickSquare/Hand/Smash/Targets/X・prompt2・modalPick を EV_SIM 中は本物DOMに触れず自動解決するようラップ
+//    (ev6WrapHumanUI)。EV_SIM 中の到達回数を EV6LEAK に計上し、実測でリーク0を照合する。
+//  修正2(運用): 生命の門200→エネから釣る対象は161最優先 / 冥界の門80→墓地蘇生は161・41・125/129を優先(ev6GatePrio)。
+//    aiPickTargets を包み門の対象選好を注入し、FX[200]/FX[80].aiX を「優先対象を出せる最小X」に置換(資源浪費防止)。
+//  修正3(運用): 冥界の通廊68は必ずベースとして設置。プランゾーンで68を更新(捨てる)ループに入らない(evChoose 内で最優先設置)。
+// ==== 新AI v5: v4 に「シャボン玉のフェアリー(161)=1体自陣温存＝色全通で対応力↑」を"正の価値"で追加 ====
+//  熟練者の指摘「161を1体は絶対に自陣に温存すると色が全通し、実際に撃てる回答/迎撃の数が増える」を評価へ接続。
+//  実装(前回の『161前線ハード全除外→対赤−6.5pt』を再発させない設計):
+//   1. castable回答への接続: 迎撃の"実体"= 通廊ペガサスの色付き回答(ペガサス離脱 125/129 の《バトル》[白1]、
+//      門フラッシュ 冥界80=黒/生命200=緑)を evColorAnswers(p,allColor) で数える。安全な161(自陣に生存中=evHasSafeShabon)が
+//      居れば色が全通=どの色の答えも任意エネで撃てる(allColor)。居なければ厳密色(evCanPayStrict)で色事故札は数えない。
+//      その差分(=161温存で"撃てるようになる"回答数)を SHABON_ANSW 加点として盤面価値に足す(evBoardValue 内)。
+//   2. 生存calibrationは非改変: 上記は deficit/interception とは切り離した"正の対応力ボーナス"。前線161への追加ペナルティは
+//      課さない(=2枚目以降・緊急ブロックの柔軟性を奪わない)。SHABON_ANCHOR=0(既定)で v4 と完全一致。
+//   ※実測: 安全な161が居る状態そのものを"フラット加点"(SHABON_ANCHOR>0)すると、クローン評価が161の有益な使用(相打ち/壁/
+//     チャンプ)から逸れて対赤/対慈愛が悪化(−2〜−6pt)。よって温存は「回答が実際に増える時だけ」正の価値=SHABON_ANSW に限定。
+// ==== 新AI v4: v3(状態クローン評価器 + 致死圏限定生存ゲート + 対ランプ・グラインド)に「対アグロ先回り防御」を追加 ====
+//  v4 追加(対速アグロ=赤単級 限定, evOppFastAggro で判定。白ウィニー/緑ランプは従来挙動を維持=回帰させない):
+//   1. 壁配置の規律: 純ブロッカー(sm0 高パワー=キラー41/グレン121)を自陣/中央の壁に置く手を大幅優遇、前線チャンプは大減点。
+//   2. 先回り防御: 致死圏でなくても相手の到達スマッシュ(oppCeiling)への露出を減点し、ターン1〜2から壁を積ませる(致死になる前に受ける)。
+//   3. 161ハード温存: 対速アグロでは 161 前線突撃を候補から実効除外(自軍温存/生命の門展開のみ)。白は fastAggro=偽なので 161ブロックの勝ち筋を維持。
+// ==== (v3 基盤) 状態クローン評価器 + 致死圏限定生存ゲート + 対ランプ・グラインド + シャボン玉枝刈り ====
 // v2 の回帰(対緑ランプ −5pt / シャボン玉チャンプ死増)を設計訂正して修正。
 //  訂正1(核心): 生存ゲートは「盤面不利」ではなく「相手が現実に1〜2ターンで自分を7点にできる=速いクロック」の
 //                 真の致死圏でのみ発火。緑ランプ(コントロール/遅いクロック)ではめったに真にならず、過剰な受け籠りが消える。
@@ -5741,6 +5768,15 @@ aiDecide=function(pi,acts,timing){
 
 // ================= B. 状態クローン評価器 =================
 let EV_SIM=false;
+// 修正1: クローン評価中は両席を isAI=true 化して人間選択UIを一切DOMへ出さずヘッドレス自動解決する(既定1=ON)。
+//        0にすると旧挙動(相手が人間=isAI偽ならUIリーク)を再現でき、リーク件数の対照計測に使う。
+const EV_CLONE_ISAI=parseInt((typeof process!=="undefined"&&process.env&&process.env.EV_CLONE_ISAI)||"1");
+// 修正2/3 の有効化(既定1=ON=v6挙動)。計測で v5 相当を再現する時だけ 0 にする(ブラウザは常に既定1)。
+const EV6_GATEPRIO=parseInt((typeof process!=="undefined"&&process.env&&process.env.EV6_GATEPRIO)||"1"); // 門ターゲット運用ルール
+const EV6_CONV68  =parseInt((typeof process!=="undefined"&&process.env&&process.env.EV6_CONV68)  ||"1"); // 冥界の通廊68 必ず設置
+// クローン評価(EV_SIM)中に本体の人間選択関数へ到達した回数(=本物DOMへ書こうとした回数)。0であるべき。
+var EV6LEAK=(typeof EV6LEAK!=="undefined"&&EV6LEAK)?EV6LEAK:{count:0,byFn:{}};
+function ev6LeakReset(){ EV6LEAK={count:0,byFn:{}}; }
 const EV_K=parseInt((typeof process!=="undefined"&&process.env&&process.env.EV_K)||"4");
 const EV_ROLL_STEPS=parseInt((typeof process!=="undefined"&&process.env&&process.env.EV_ROLL)||"4");
 // v3 チューナブル
@@ -5749,11 +5785,63 @@ const V3_RAMP_E =parseFloat((typeof process!=="undefined"&&process.env&&process.
 const V3_SHABON =parseInt  ((typeof process!=="undefined"&&process.env&&process.env.V3_SHABON )||"0");   // 161前線の候補ハード除外 on/off(既定0=ソフト減点のみ。1で強制除外だが対慈愛の勝ち筋161ブロックまで消え-5pt回帰)
 const V3_SHABON_PEN=parseFloat((typeof process!=="undefined"&&process.env&&process.env.V3_SHABON_PEN)||"5"); // 161が前線(被バトル位置)にある結果盤面のソフト減点
 const V3_GRIND  =parseFloat((typeof process!=="undefined"&&process.env&&process.env.V3_GRIND  )||"3.6"); // 非致死時の資源アド重み(致死時は3のまま)
+// ---- v4 チューナブル(対速アグロ=赤単級 限定の先回り防御。既定値は全て「v3と同挙動(=無効/中立)」。実測でプラスの項だけ有効化する) ----
+function _envF(n,d){ return parseFloat((typeof process!=="undefined"&&process.env&&process.env[n])||d); }
+const V4_FASTDYN   =_envF("V4_FASTDYN","0");    // 1で「動的fastAggro(観測ベース)」を有効化。既定0=静的判定のみ(白の誤検出を防ぐ)
+const V4_WALL      =_envF("V4_WALL","6");       // 純ブロッカー(sm0高power)を壁に置く加点。既定6=v3同値。>6で対速アグロのみ壁優遇を強化
+const V4_FRONTPEN  =_envF("V4_FRONTPEN","16");  // 純ブロッカー(sm0=攻撃価値0)を前線(敵陣)に置く盤面の減点(対速アグロ限定)。実測で対赤 +0.5pt かつ白/緑は不変(赤限定)なので既定ON=16。
+const V4_PROPH     =_envF("V4_PROPH","0");      // 先回り防御: oppCeiling露出への減点/点(対速アグロ限定)。既定0=v3(なし)
+const V4_PROPH_B   =_envF("V4_PROPH_B","0");    // 先回り: 壁が立っている盤面の加点/枚(対速アグロ限定)。既定0
+const V4_NEAR      =_envF("V4_NEAR","0");       // 近致死(deficit>=-2)警戒の減点係数(対速アグロ限定)。既定0=v3(なし)
+const V4_PRESS     =_envF("V4_PRESS","1");      // 非致死・対速アグロ時の press 乗率。既定1=v3(割引なし)。<1で受け寄り
+const V4_SHABON_F  =_envF("V4_SHABON_F","0");   // 1で対速アグロ時 161前線をハード除外。既定0=v3(ソフト減点のみ)
+const V4_SHABON_PEN=_envF("V4_SHABON_PEN","0"); // >0で対速アグロ時の 161前線ソフト減点をこの値に置換(0=V3_SHABON_PENのまま)
+const V4_BLOCKERBODY=_envF("V4_BLOCKERBODY","0"); // 1で「純ブロッカー(sm0高power)」一般に壁加点/前線減点を適用。既定0=41/121(キラー/グレン)のみ=課題スコープ通り。白の壁加点を乱さない(=白不変)ため既定OFF。
+// ---- v5 チューナブル: シャボン玉のフェアリー(161)「1体を自陣に温存=色全通で対応力↑」 ----
+const SHABON_ANCHOR   =_envF("SHABON_ANCHOR","0");    // 安全な161(自陣に生存中=色補正アンカー)が居る結果盤面の加点(温存そのものの価値)。既定0=v4同一。
+const SHABON_ANSW     =_envF("SHABON_ANSW","4");      // 「161色全通で撃てるようになる色付き迎撃(ペガサス離脱=白/門=黒緑)」1つあたりの加点。deficitとは切り離した対応力ボーナス。既定4(実測で対赤/慈愛/緑いずれも回帰なし=v4非悪化)。
+const SHABON_ANSW_CAP =_envF("SHABON_ANSW_CAP","3");  // その加点の上限(過剰評価防止)。
 
+// 安全な色補正アンカー: 自陣(homeRow)に生存中の161。次の相手ターンも色を全通させ続ける「温存対象」。
+// 前線(中央 r=2 / 敵陣)の161は討ち取られ得るので「安全に居る」とは数えない。
+function evHasSafeShabon(pi){
+ for(const u of units()){ if(u.ctrl===pi && u.no===161 && !u.frozen && u.r===homeRow(pi)) return true; }
+ return false;
+}
+// 161の全色化(rainbow)を無視した厳密な色支払い判定(=161不在時に色事故で撃てない札を弾く)。
+function evCanPayStrict(p,cost){
+ for(const col in cost.c){ let have=0;
+  for(const e of p.energy){ if(!e.frozen && CARDS[e.no] && CARDS[e.no].col===col) have++; }
+  if(have<cost.c[col]) return false; }
+ const usedColored=Object.values(cost.c).reduce((a,b)=>a+b,0);
+ const freeAvail=relEnergy(p).length-usedColored+relSmash(p).length;
+ return freeAvail>=cost.n;
+}
+// 迎撃/回答に「実際に撃てる」札だけを数える(=生存deficit計算用。v4と同じ狭い定義=キャリブレーション保存)。
+//  安全な161(自陣温存)が居れば色が全通 → 色事故の手札トリックも撃てる。161不在なら色で撃てない札は数えない。
+//  ※通廊ペガサスは手札バトルトリックをほぼ持たないため deficit への影響は v4 と実質同一(=対アグロの calibration を壊さない)。
 function evReactiveCards(p){
+ const allColor=evHasSafeShabon(p.i);   // 安全アンカー=色全通
+ const relCnt=relEnergy(p).length+relSmash(p).length;
  return p.hand.filter(no=>{ const c=CARDS[no]; if(!c||c.type!=="S") return false;
   if(!(c.timing==="バトル"||COMBAT_TRICKS.has(no))) return false;
-  try{ return canPay(p,parseCost(c.play)); }catch(e){ return true; } });
+  try{ const cost=parseCost(c.play);
+   if(allColor) return relCnt>=cost.total;   // 161居れば総エネのみで任意色を撃てる
+   return evCanPayStrict(p,cost);            // 色事故で撃てない札は数えない
+  }catch(e){ return true; } });
+}
+// 「161色全通が実際に撃てるようにする色付き迎撃」= 通廊ペガサスの実迎撃: ペガサス離脱(125/129 の《バトル》[白1])+ 門フラッシュ(冥界80=黒 / 生命200=緑)。
+//  allColor(安全161有り)なら任意エネで撃てる / 無しなら厳密色。→ 差分が「161温存で増える castable 回答数」= 対応力の実体。
+function evColorAnswers(p, allColor){
+ const relCnt=relEnergy(p).length+relSmash(p).length;
+ const pay=(cost)=> allColor ? (relCnt>=cost.total) : evCanPayStrict(p,cost);
+ let n=0;
+ try{
+  for(const u of units()){ if(u.ctrl===p.i&&!u.frozen&&(u.no===125||u.no===129)&&pay(parseCost("白1"))) n++; } // ペガサス離脱(白)
+  for(const no of p.hand){ if(no===80 && pay(parseCost("黒1")) && p.grave.some(x=>CARDS[x]&&CARDS[x].type==="U")) n++;   // 冥界の門(黒)
+                           if(no===200&& pay(parseCost("緑1")) && p.energy.some(e=>CARDS[e.no]&&CARDS[e.no].type==="U")) n++; } // 生命の門(緑)
+ }catch(e){}
+ return n;
 }
 function evReadyThreats(pi){
  let n=0; for(const u of units()){ if(u.ctrl===pi) continue;
@@ -5819,6 +5907,38 @@ function evOppIsRamp(pi){
  }catch(e){ return false; }
 }
 
+// ==== v4: 「速いクロック(真アグロ)」判定 ====================================
+// 課題: deckArchetype("aggro") は "コスト<=2 かつ sm>=1 のユニット>=8枚" で発火するため、
+//       中速の白ウィニー(慈愛単, cheap=9)まで aggro に含み、白の勝ち筋(161ブロック)まで
+//       アグロ用ハード抑止に巻き込まれてしまう。そこで「本当に速い(赤単級)」相手だけを拾う
+//       厳しめの判定を別に用意し、v4 の先回り防御/壁優遇/161ハード温存はこの判定に限定する。
+//  ・静的: 低コスト刻みボディの密度が濃い(cost<=2&sm>=1 が枚数>=12 or ユニット比>=0.40)= 序盤から刻む速攻。
+//          赤単 cheap=15(比0.48)→真, 慈愛単 cheap=9(比0.30)→偽, 緑ランプ cheap=6→偽。
+//  ・動的: どんなデッキでも、実際に序盤から前線/中央へ複数の刻みアタッカーを構えている観測があれば真。
+let _fastAggroCache=(typeof WeakMap!=="undefined")?new WeakMap():null;
+function evDeckFastAggroStatic(dk){
+ if(!dk) return false;
+ if(_fastAggroCache&&_fastAggroCache.has(dk)) return _fastAggroCache.get(dk);
+ let ut=0,cheap=0;
+ dk.list.forEach(e=>{ const no=(typeof e==="number")?e:e.no, n=(typeof e==="number")?2:e.n, c=CARDS[no];
+  if(c&&c.type==="U"){ ut+=n; if(totalCost(no)<=2&&(c.sm||0)>=1) cheap+=n; } });
+ const r=(ut>0)&&(cheap>=12 || cheap/ut>=0.40);
+ if(_fastAggroCache) _fastAggroCache.set(dk,r);
+ return r;
+}
+function evOppFastAggro(pi){
+ try{
+  const opp=G.pl[other(pi)];
+  if(deckArchetype(opp)!=="aggro") return false;         // 遅い相手(緑ランプ/コントロール)は対象外
+  if(evDeckFastAggroStatic(opp.deckDef)) return true;     // 静的: 低コスト刻みが濃い(=赤単級)。赤単のみ真、慈愛単は偽。
+  // 動的判定(既定OFF): 白ウィニー等が中盤に複数攻撃を構えると誤って fastAggro になり、白の勝ち筋(161ブロック)を潰す回帰が出たため既定で無効。
+  if(V4_FASTDYN){ let committed=0; for(const u of units()){ if(u.ctrl===pi||u.frozen) continue;
+    if((u.r===2||u.r===homeRow(pi))&&smVal(u)>=1) committed++; }
+   if(committed>=3) return true; }
+  return false;
+ }catch(e){ return false; }
+}
+
 // ---- 結果盤面の評価(me=pi の視点、次は相手ターンという想定) ----
 function evBoardValue(pi){
  const p=G.pl[pi], opp=G.pl[other(pi)];
@@ -5828,6 +5948,8 @@ function evBoardValue(pi){
  const lifeHeadroom=S.lifeHeadroom;
  // 対アグロ(速いクロック=赤単)は v2 の生存脳をそのまま維持(受け籠りが正しい)。v3 の緩和は対コントロール/ランプ限定。
  let oppAggro=false; try{ oppAggro=deckArchetype(opp)==="aggro"; }catch(e){}
+ // v4: 「本当に速い(赤単級)」相手か。壁優遇/先回り防御/161ハード温存はこの旗が立つ時だけ強める(白は除外)。
+ let fastAggro=false; try{ fastAggro=evOppFastAggro(pi); }catch(e){}
 
  let V=0;
  // (1) 生存ゲート: 「真の致死圏」= 相手が現実に1〜2ターンで詰められる(deficit>=0 かつ 速いクロック)時のみ大減点。
@@ -5839,6 +5961,8 @@ function evBoardValue(pi){
   V -= (oppAggro?1000+120*Math.min(S.deficit,7):V3_DEFICIT*Math.min(S.deficit,5)); // アグロは従来通り重い / コントロールは軽い
  } else {
   V += 12*Math.min(-S.deficit,6);
+  // v4 先回り(既定OFF): 対速アグロは致死一歩手前(deficit>=-2)でも警戒(手遅れ回避)。V4_NEAR>0 で有効。
+  if(fastAggro && V4_NEAR>0 && -S.deficit<=2) V -= V4_NEAR*(3-(-S.deficit));
  }
  // 数の制約: 有効回答数 ≥ 準備脅威数。対アグロは v2 通り重く、対コントロール非致死は緑ランプの多数の大型で過剰発火するので弱める。
  const threats = evReadyThreats(pi);
@@ -5846,20 +5970,46 @@ function evBoardValue(pi){
  if(threats>0 && answers < threats){
   V -= ((oppAggro||S.lethal)?200:35)*(threats-answers);
  }
+ // (1b) v4 先回り防御(対速アグロ限定): 致死圏でなくても、相手の到達スマッシュ(oppCeiling)を実効ブロック
+ //      (壁+バトル札+エネ)で上回れていない=露出しているほど減点し、ターン1〜2から壁を立てさせる。
+ //      壁が現に立っている盤面も能動的に加点(致死になる前から受けを作る)。緑ランプ等は fastAggro=偽で不発。
+ if(fastAggro && (V4_PROPH>0 || V4_PROPH_B>0)){
+  const shortfall=Math.max(0, S.oppCeiling - S.interception);
+  if(V4_PROPH>0)   V -= V4_PROPH*Math.min(shortfall,6);   // 露出しているレーンを先に塞ぐ
+  if(V4_PROPH_B>0) V += V4_PROPH_B*Math.min(S.blockers,3);// 壁が立っている盤面を選好(先回り)
+ }
 
  // (2) 役割強制
  for(const u of units()){ if(u.ctrl!==pi) continue;
   const wall=(u.r===homeRow(pi)||u.r===2);
-  if(u.no===41||u.no===121){ if(wall) V+=6; }
+  // 純ブロッカー(攻撃価値0=sm0 の高パワー: キラー41/グレン121 等)。前線(敵陣)に置いても sm0 で刻めず
+  // 相手の速いアタッカーに討ち取られて盤面を失うだけ。対速アグロでは「自陣/中央の壁」を大幅優遇、前線は大減点。
+  const isBlockerBody=(V4_BLOCKERBODY&&smVal(u)===0 && effPow(u)>=3000);
+  if(u.no===41||u.no===121||isBlockerBody){
+   if(wall){ V += fastAggro?V4_WALL:6; }                   // 自陣/中央の壁 = レーンを塞ぐ(既定 V4_WALL=6=v3同値)
+   else if(fastAggro && V4_FRONTPEN>0){ V -= V4_FRONTPEN; } // 前線に置いた純ブロッカー = 無駄チャンプ(既定OFF)
+  }
   if(u.no===125||u.no===129){ V+=4; if(u.r===homeRow(opp.i)) V+=3; }
  }
+ // ==== シャボン玉のフェアリー(161) ====
+ //  v4基盤(不変): 161総数の緩い加点 + 前線(中央/敵陣=被バトル位置)161のソフト減点。
  { let sh=0; for(const u of units()) if(u.ctrl===pi&&u.no===161) sh++;
    for(const e of p.energy) if(e.no===161) sh++;
-   V += Math.min(sh,3)*3; }
- // 訂正3(ソフト枝刈り): 161が前線(中央/敵陣=被バトル位置)にある結果盤面を減点。クローン評価が161の無駄な突撃/
- // 緊急ブロッカー消費を避けるが、明確に勝つ161プレイ(白の一部)は盤面価値が上回れば選べる → ハード除外より白の回帰が小さい。
- { let sf=0; for(const u of units()) if(u.ctrl===pi&&u.no===161&&(u.r===2||u.r===homeRow(opp.i))) sf++;
-   if(sf) V -= V3_SHABON_PEN*sf; }
+   V += Math.min(sh,3)*3;
+   let sf=0; for(const u of units()) if(u.ctrl===pi&&u.no===161&&(u.r===2||u.r===homeRow(opp.i))) sf++;
+   if(sf) V -= ((fastAggro&&V4_SHABON_PEN>0)?V4_SHABON_PEN:V3_SHABON_PEN)*sf;
+   // ---- v5 追加: 「1体を自陣に温存 = 色が全通し実際に撃てる回答が増える(=対応力↑)」を"正の価値"で表現 ----
+   //  ・純加点のみ(前線161への追加ペナルティは課さない=2枚目以降/緊急ブロックの柔軟性を奪わない=前回−6.5ptの回避)。
+   //  ・既定(SHABON_ANCHOR=0,SHABON_ANSW=0)では v4 と完全一致。実測でプラスの時だけ有効化する。
+   if(SHABON_ANCHOR>0 || SHABON_ANSW>0){
+     let shSafe=0; for(const u of units()) if(u.ctrl===pi&&u.no===161&&!u.frozen&&u.r===homeRow(pi)) shSafe++; // 自陣に生存中=安全アンカー
+     let shStock=0; for(const e of p.energy) if(e.no===161) shStock++; for(const no of p.hand) if(no===161) shStock++;
+     if(shSafe>=1){
+       V += SHABON_ANCHOR;                                                    // (a) 1体温存できている価値
+       if(SHABON_ANSW>0){ const unlocked=evColorAnswers(p,true)-evColorAnswers(p,false); // (b) 色全通で"撃てる迎撃"が増える数
+         if(unlocked>0) V += SHABON_ANSW*Math.min(unlocked,SHABON_ANSW_CAP); }
+     } else if(shStock>=1){ V += SHABON_ANCHOR*0.35; }                        // (c) 未確保→自陣へ確保する余地を弱め加点(確保を優先)
+   } }
 
  // (3) 資源アド(グラインドの核)。致死圏でない時は重みを上げ、1対2交換/リアニメ/エネ破壊で削り勝つ盤面を選好。
  const oppEnergyCount = relEnergy(opp).length+relSmash(opp).length;
@@ -5873,7 +6023,8 @@ function evBoardValue(pi){
  { let clk=0; for(const u of units()){ if(u.ctrl!==pi) continue;
     if(u.r===2) clk+=smVal(u); else if(u.r===homeRow(opp.i)) clk+=smVal(u)+1; }
    const press = 1.6*clk + 1.4*(opp.smash.length);
-   V += S.lethal ? press*0.4 : press;                        // 致死時のみ割り引き(受け優先)、非致死はフル(能動)
+   // 致死時は受け優先で割り引き。非致死・対速アグロは V4_PRESS(既定1=v3同値)で任意に受け寄りへ。
+   V += S.lethal ? press*0.4 : (fastAggro? press*V4_PRESS : press);
  }
  return V;
 }
@@ -5881,7 +6032,9 @@ function evBoardValue(pi){
 // ---- 訂正3: シャボン玉161を前線(中央/敵陣の被バトル位置)へ突撃させる手か? ----
 // 移動: 161が中央(r=2) or 敵陣(homeRow(opp))へ動く手。攻撃(占有マスへの前進)も含む。playU で前線マスに置く手も。
 function evIsShabonFront(pi,a){
- if(!V3_SHABON) return false;
+ // v4: 対速アグロ(赤単級)では 161 前線突撃をハード除外(V4_SHABON_F=1 の時)。V3_SHABON 明示 on でも従来通り。白/緑は従来のソフト減点のみ。
+ let hard=false; try{ hard=(V3_SHABON||(V4_SHABON_F&&evOppFastAggro(pi))); }catch(e){ hard=!!V3_SHABON; }
+ if(!hard) return false;
  try{
   const oppHome=homeRow(other(pi));
   if(a.t==="move"){
@@ -5899,6 +6052,81 @@ function evIsShabonFront(pi,a){
  }catch(e){}
  return false;
 }
+
+// ============================================================
+//  修正2: 門(生命200/冥界80)のターゲット運用ルール(熟練者指摘)
+//   ・生命の門200: エネルギーゾーンから釣る対象は原則シャボン玉161を最優先(色補正アンカー)。
+//   ・冥界の門80 : 墓地からの蘇生は 161(色補正)・41(受け)・125/129(詰め/離脱) を優先。
+//  実装: (A) aiPickTargets を包み、spec.no が 200/80 の候補に優先度スコアを与えて選ばせる。
+//        (B) FX[200]/FX[80].aiX を「優先対象を出せる最小X」に置換し、払い過ぎ(資源浪費)を避ける。
+// ============================================================
+const EV6_LIFE_PRIO=[161];             // 生命の門: 161最優先
+const EV6_DEATH_PRIO=[161,41,125,129]; // 冥界の門: 161→41→125/129
+function ev6PrioRank(list,no){ const i=list.indexOf(no); return i<0?-1:(list.length-i); } // 高いほど優先
+// 門用: 優先対象を出せる最小X(=優先対象の中で最上位のコスト)。優先対象が無ければ従来通り(払える最大コスト)。
+function ev6GateX(pi,zone,prio,mx){
+ try{
+  const p=G.pl[pi];
+  const nos = zone==="en" ? p.energy.map(e=>e.no) : p.grave.slice();
+  const isU = no => { const c=CARDS[no]; return c&&c.type==="U"; };
+  for(const pr of prio){
+   if(nos.some(no=>no===pr && isU(no) && totalCost(no)<=mx)) return Math.min(mx, totalCost(pr));
+  }
+  const costs=nos.filter(no=>isU(no)&&totalCost(no)<=mx).map(no=>totalCost(no));
+  return costs.length?Math.max(...costs):0;
+ }catch(e){ return 0; }
+}
+try{
+ if(EV6_GATEPRIO && typeof FX!=="undefined"){
+  if(FX[200]) FX[200].aiX=(pi,mx)=>ev6GateX(pi,"en",EV6_LIFE_PRIO,mx);
+  if(FX[80])  FX[80].aiX =(pi,mx)=>ev6GateX(pi,"grave",EV6_DEATH_PRIO,mx);
+ }
+}catch(e){}
+const _origAiPickTargets_EV6=(typeof aiPickTargets!=="undefined")?aiPickTargets:null;
+if(EV6_GATEPRIO && _origAiPickTargets_EV6){
+ aiPickTargets=function(pi,spec,cands,n){
+  try{
+   if(spec && (spec.no===200 || spec.no===80) && cands && cands.length){
+    const prio = spec.no===200 ? EV6_LIFE_PRIO : EV6_DEATH_PRIO;
+    const scored=cands.map(t=>{
+     const rank=ev6PrioRank(prio,t.no);
+     const s = rank>=0 ? (1000+rank*100) : (totalCost(t.no)/2); // 優先対象を最上位、外は従来の高コスト優先
+     return {t,s};
+    }).sort((a,b)=>b.s-a.s);
+    return scored.slice(0,n).map(x=>x.t);
+   }
+  }catch(e){}
+  return _origAiPickTargets_EV6(pi,spec,cands,n);
+ };
+}
+
+// ============================================================
+//  修正1(保険): クローン評価(EV_SIM)中は本体の人間選択関数を本物DOMに触れさせず自動解決する。
+//   主対策は evScoreCandidate の「両席 isAI=true 化」だが、万一 humanPick 系へ到達しても
+//   ここで DOM を触らず妥当な既定値を返し、到達回数を EV6LEAK に計上(=リークの実体を可視化)。
+//   EV_SIM が偽(ライブ/人間の手番)の時は完全に素通し=本物のプロンプトを出す(挙動非改変)。
+// ============================================================
+function ev6Leak(name){ EV6LEAK.count++; EV6LEAK.byFn[name]=(EV6LEAK.byFn[name]||0)+1; }
+(function ev6WrapHumanUI(){
+ try{
+  if(typeof humanChoose!=="undefined"){ const o=humanChoose;
+   humanChoose=async function(pi,acts,timing){ if(EV_SIM){ ev6Leak("humanChoose"); return aiDecide(pi,acts,timing); } return o.apply(this,arguments); }; }
+  if(typeof humanPickSquare!=="undefined"){ const o=humanPickSquare;
+   humanPickSquare=async function(pi,sqs,msg,cancelable,markAtk){ if(EV_SIM){ ev6Leak("humanPickSquare"); return (sqs&&sqs.length)?sqs[0]:null; } return o.apply(this,arguments); }; }
+  if(typeof humanPickHand!=="undefined"){ const o=humanPickHand;
+   humanPickHand=async function(p,msg,optional){ if(EV_SIM){ ev6Leak("humanPickHand"); return optional?null:((p&&p.hand&&p.hand.length)?p.hand[0]:null); } return o.apply(this,arguments); }; }
+  if(typeof humanPickSmash!=="undefined"){ const o=humanPickSmash;
+   humanPickSmash=async function(p,cands){ if(EV_SIM){ ev6Leak("humanPickSmash"); return null; } return o.apply(this,arguments); }; }
+  if(typeof humanPickTargets!=="undefined"){ const o=humanPickTargets;
+   humanPickTargets=async function(pi,cands,n,upTo,msg,optional){ if(EV_SIM){ ev6Leak("humanPickTargets"); return (optional||upTo)?[]:((cands&&cands.length)?cands.slice(0,Math.min(n||1,cands.length)):[]); } return o.apply(this,arguments); }; }
+  if(typeof humanPickX!=="undefined"){ const o=humanPickX;
+   humanPickX=async function(pi,mx,title){ if(EV_SIM){ ev6Leak("humanPickX"); return 0; } return o.apply(this,arguments); }; }
+  if(typeof prompt2!=="undefined"){ const o=prompt2;
+   prompt2=function(msg,btns){ if(EV_SIM){ ev6Leak("prompt2"); return; } return o.apply(this,arguments); }; }
+  if(typeof modalPick!=="undefined"){ const o=modalPick;
+   modalPick=function(title,cands,n,upTo,optional){ if(EV_SIM){ ev6Leak("modalPick"); return Promise.resolve(optional?[]:((cands&&cands.length)?cands.slice(0,Math.min(n||1,cands.length)):[])); } return o.apply(this,arguments); }; }
+ }catch(e){}
+})();
 
 function evCloneG(src){
  const c=JSON.parse(JSON.stringify(src));
@@ -5927,6 +6155,7 @@ async function evScoreCandidate(pi,a){
  try{
   const clone=evCloneG(savedG);
   clone.headless=true;                  // renderAll等(G.headless早期return)を無効化=画面/DOMを一切触らない
+  if(EV_CLONE_ISAI&&clone.pl) clone.pl.forEach(pp=>{ if(pp) pp.isAI=true; }); // 修正1: 全席AI化=クローン評価中に相手(人間)の選択UI(モーダル/相手エネ破壊等)を本物DOMへ一切出さずヘッドレス自動解決
   G=clone; EV_SIM=true; KREC={mode:"off",stream:[],i:0};
   log=function(m,cls){ try{ if(G&&G.logs) G.logs.push({m,cls}); }catch(_e){} }; // 本物のログDOMへは書かない
   sleep=function(){ return Promise.resolve(); };                                // シミュ中は待機しない
@@ -5966,9 +6195,35 @@ function evUnderPressure(pi){
 async function evChoose(pi,acts,timing){
  const nonPass=acts.filter(a=>a.t!=="pass");
  if(EV_SIM || timing!=="main" || G.ap!==pi || nonPass.length===0) return aiDecide(pi,acts,timing);
+ // ---- 修正3: 冥界の通廊(68)は必ずベースとして設置。プランゾーンで68を更新(捨てる)ループに入らない ----
+ //  リアニメ循環の土台。設置可能(=手札/プランにあり色/コストを払える合法手)なら最優先で置く。
+ //  ただし対速アグロ(赤単級)では68(黒2無2=4)の即設置がタップアウト=受け崩壊を招き大幅に負け越すため、
+ //  強制設置はグラインド相手(緑ランプ/慈愛単/コントロール)に限定し、対速アグロと真の致死圏では通常評価に委ねる。
+ try{
+  let lethalNow=false; try{ lethalNow=evSurvival(pi).lethal; }catch(_e){}
+  let faNow=false; try{ faNow=evOppFastAggro(pi); }catch(_e){}
+  if(EV6_CONV68 && !lethalNow && !faNow){
+   const play68=acts.find(a=>a.t==="playB" && a.no===68);
+   if(play68){
+    if(play68.col==null && play68.cols && play68.cols.length){
+     const colHasUnit=c=>units().some(u=>u.ctrl===pi&&u.c===c);
+     play68.col = (play68.cols.find(colHasUnit)!=null)?play68.cols.find(colHasUnit):play68.cols[0];
+    }
+    return play68; // 早期設置を強く優遇(=プラン更新で68を回さない)
+   }
+  }
+  // 68がプラン公開中(山札トップ)なら、それを墓地へ捨てる planUpdate を選ばない(設置機会まで保持)。
+  // 対速アグロでは受けの答えを掘る必要があるためプラン挙動を縛らない(=通常評価に委ねる)。
+  const p0=G.pl[pi];
+  if(EV6_CONV68 && !faNow && p0 && p0.planUp && p0.deck && p0.deck.length && p0.deck[p0.deck.length-1]===68){
+   const filt=acts.filter(a=>a.t!=="planUpdate");
+   if(filt.length){ acts=filt; }
+  }
+ }catch(e){}
  // aiScore で並べ替え(副作用で a.sq/a.to を解決 → シャボン前線判定に必要)
  const ranked=acts.map(a=>({a,s:aiScore(pi,a,timing)})).sort((x,y)=>y.s-x.s);
  let oppAggro=false; try{ oppAggro=deckArchetype(G.pl[other(pi)])==="aggro"; }catch(e){}
+ let fastAggroNow=false; try{ fastAggroNow=evOppFastAggro(pi); }catch(e){}
  let lethalNow=false; try{ lethalNow=evSurvival(pi).lethal; }catch(e){}
  // 生存脳の起動率を実決定(非SIM)ベースで計測。defensive=受け優先が働く決定(アグロ相手 or 真の致死圏)。
  //  lethal=真の致死圏(deficit>=0 かつ 速いクロック)。 v2Fire=v2の緩い定義(incoming>=myMax)。対緑での過剰発火を可視化。
@@ -5978,9 +6233,10 @@ async function evChoose(pi,acts,timing){
    const inc=maxSmashAgainst(pi), mm=maxSmashAgainst(other(pi));
    if((inc>=mm&&inc>=1)||(G.pl[pi].smash.length+inc>=7)) EV3STATS.v2Fire++;
  } }catch(e){}
- // 訂正3: 突撃161(前線)候補を選択集合から除外(全滅回避で最低1手は残す)
+ // 訂正3 / v4: 突撃161(前線)候補を選択集合から除外(全滅回避で最低1手は残す)。対速アグロ(赤単級)では実効ハード除外、白/緑は従来通り(V3_SHABON 既定0 なら無除外)。
  let pool=ranked.map(o=>o.a);
- if(V3_SHABON){ const filt=pool.filter(a=>!evIsShabonFront(pi,a)); if(filt.length) pool=filt; }
+ const shabonHard=(V3_SHABON||(V4_SHABON_F&&fastAggroNow));
+ if(shabonHard){ const filt=pool.filter(a=>!evIsShabonFront(pi,a)); if(filt.length) pool=filt; }
  // クローン評価(受け優先の先読み)は「速いクロック(アグロ)or 真の致死圏」= 受けが正解の局面に限定。
  // 遅いコントロール/ランプの非致死局面では、精緻な既存 aiScore(ベースライン)に委ねる方が強い
  //   (状態クローン+短ロールの能動グラインドは実測でベースラインに劣後 → 24%割れ)。グラインドはベースラインが担う。
@@ -6038,7 +6294,7 @@ EVALAI.on=true;
  function addBadge(){ try{
    if(document.getElementById("aiTestBadge")) return;
    const b=document.createElement("div"); b.id="aiTestBadge";
-   b.textContent="実験AIビルド: 新AI v3";
+   b.textContent="実験AIビルド: 新AI v6";
    b.style.cssText="position:fixed;left:6px;bottom:6px;z-index:99999;background:#7a1030;color:#ffd7e2;font:11px/1.4 sans-serif;padding:3px 8px;border:1px solid #ff6b95;border-radius:6px;opacity:.85;pointer-events:none";
    (document.body||document.documentElement).appendChild(b);
  }catch(e){} }
