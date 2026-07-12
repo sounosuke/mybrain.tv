@@ -311,7 +311,7 @@ catch(e){ console.error("Firebase init 失敗:",e); }
 
 <script>
 "use strict";
-const GAME_VERSION="P3.19 AI-TEST (新AI v6) — 実験ビルド";
+const GAME_VERSION="P3.19 AI-TEST (新AI v7) — 実験ビルド";
 const KIFU_FMT=2; // 棋譜の記録フォーマット版(記録項目を増やしたら上げる。読込時に不一致なら警告)
 /* ============ カードデータ ============ */
 const CARDS={};
@@ -5618,6 +5618,18 @@ if(typeof document!=="undefined"&&document.getElementById("board")){if($("verLbl
 //  clone.headless=true + 両席isAI化 + log/sleep のstub化で描画/DOM/人間選択UI/待機の副作用を出さず、
 //  G・乱数・KREC・uidSeq を finally で完全復元する(本物のGと画面は汚さない)。
 // ============================================================
+// ==== 新AI v7: v6 の「冥界の通廊(68)無条件即設置」を、熟練者指摘に沿って『相手の脅威ラインに時機を見て張る』へ置換 ====
+//  熟練者指摘: 68は自メインで無条件に即張るものではない。相手が移動してスマッシュできる中央/前進アタッカーが
+//   居るライン(=同じ列 c)に68を張ると、そのアタッカーがバトルに勝ってもバトル終了時に墓地へ落ちる
+//   (エンジン runBattle: killTarget(winner,"冥界の通廊"))。よってチャンプブロックで相手の脅威を確実に処理でき
+//   迎撃が"楽"になる。さらに自軍が勝てば墓地→リアニメ燃料。だから「相手の中央進出の脅威と同じ列」に位置取りして張る。
+//  v7 変更(v6の68強制設置の置換):
+//   1. ライン狙い: 68設置は「相手のスマッシュ脅威(中央/前進/接近)が居る空き列」を脅威度順に選んで張る手を最優先(ev7Pick68Col)。
+//      空マス/任意ラインへ無目的に即張る手より脅威ラインに合わせる手を優先。
+//   2. 時機: 脅威がそのラインに出現/接近している時のみ張る。ターン1に脅威も無いのに即張る(=タップアウト受け崩壊)はしない。
+//      プラン更新で68を捨てる/回すループは引き続き禁止(捨てず温存し、張り時に張る。matchup問わず)。
+//   3. 生存整合: 68(黒2無2=4)設置で受け余力を失い致死圏へ入るならクローンで検知して見送る(ev7Would68Lethal)。
+//      対アグロでも、相手の中央脅威が出たら脅威ラインへ張って迎撃を楽にする(タップアウトで死なない範囲で)。v6の対アグロ強制回避の折衷を統一。
 // ==== 新AI v6: v5 に「クローン評価のUIリーク根絶 + 門ターゲット運用ルール + 冥界の通廊(68)必ず設置」を追加 ====
 //  修正1(重大バグ): クローン先読み(evScoreCandidate/ロールフォワード)中に、相手(人間=isAI偽)の選択
 //    (例: 大巨人クレーター168の死亡時「相手はエネルギー1枚を墓地に置く」= oppEnergyLossFx→humanPickTargets)が
@@ -6181,6 +6193,55 @@ async function evScoreCandidate(pi,a){
  return val;
 }
 
+// ============================================================
+//  v7: 冥界の通廊(68)を「相手の脅威ライン(同じ列)に時機を見て張る」ための位置/時機/安全ヘルパ
+// ============================================================
+// 相手のスマッシュ脅威が居る列(c)を脅威度順に返す。列 c にこの脅威と同じラインで68を張ると迎撃が楽になる。
+//  ・自陣(homeRow(pi))に前進済み=既にスマッシュしてくる最重脅威(smVal+1)。
+//  ・中央(r=2)=スマッシュ可能な脅威(smVal)。
+//  ・敵陣(homeRow(opp))で移動可能=中央へ前進してスマッシュしうる接近中の脅威(smVal*0.5)。
+function ev7ThreatCols(pi){
+ const cols={}; const myHome=homeRow(pi), oppHome=homeRow(other(pi));
+ try{ for(const u of units()){
+  if(u.ctrl===pi||u.frozen) continue;
+  const sm=smVal(u); if(sm<=0) continue;
+  let w=0;
+  if(u.r===myHome) w=sm+1;                 // 既に自陣でスマッシュ = 最重
+  else if(u.r===2) w=sm;                   // 中央=スマッシュ可能
+  else if(u.r===oppHome && u.d && u.d.move) w=sm*0.5; // 敵陣→中央へ前進してスマッシュしうる(接近中)
+  if(w>0) cols[u.c]=(cols[u.c]||0)+w;
+ } }catch(e){}
+ return Object.keys(cols).map(c=>({c:+c,w:cols[c]})).sort((a,b)=>b.w-a.w);
+}
+// 設置可能な空き列(freeCols)のうち、相手の脅威列を脅威度順に選ぶ。脅威列が空いていなければ null(=張り時でない)。
+function ev7Pick68Col(pi,freeCols){
+ if(!freeCols||!freeCols.length) return null;
+ const tc=ev7ThreatCols(pi);
+ for(const t of tc){ if(freeCols.indexOf(t.c)>=0) return t.c; }
+ return null;
+}
+// 68(黒2無2=4)を col に張った結果、受け余力を失って致死圏(evSurvival.lethal)に入るか。
+//  クローンで安全に検査(EV_SIM/headless/両席isAI/log・sleep stub。ライブでもDOM/相手UIへ一切書かない)。
+async function ev7Would68Lethal(pi,act){
+ const savedG=G, savedRng=_rngState, savedJit=_evJit, savedKREC=KREC, savedUid=uidSeq, savedSIM=EV_SIM;
+ const _savedLog=(typeof log!=="undefined")?log:null, _savedSleep=(typeof sleep!=="undefined")?sleep:null;
+ let lethal=false;
+ try{
+  const clone=evCloneG(savedG);
+  clone.headless=true;
+  if(EV_CLONE_ISAI&&clone.pl) clone.pl.forEach(pp=>{ if(pp) pp.isAI=true; });
+  G=clone; EV_SIM=true; KREC={mode:"off",stream:[],i:0};
+  if(_savedLog) log=function(m,cls){ try{ if(G&&G.logs) G.logs.push({m,cls}); }catch(_e){} };
+  if(_savedSleep) sleep=function(){ return Promise.resolve(); };
+  await performAction(pi,act);
+  await evSettle();
+  if(!G.over) lethal=!!evSurvival(pi).lethal;
+ }catch(e){ lethal=false; }
+ finally{ G=savedG; _rngState=savedRng; _evJit=savedJit; KREC=savedKREC; uidSeq=savedUid; EV_SIM=savedSIM;
+  if(_savedLog) log=_savedLog; if(_savedSleep) sleep=_savedSleep; }
+ return lethal;
+}
+
 function evUnderPressure(pi){
  try{
   const p=G.pl[pi];
@@ -6195,27 +6256,43 @@ function evUnderPressure(pi){
 async function evChoose(pi,acts,timing){
  const nonPass=acts.filter(a=>a.t!=="pass");
  if(EV_SIM || timing!=="main" || G.ap!==pi || nonPass.length===0) return aiDecide(pi,acts,timing);
- // ---- 修正3: 冥界の通廊(68)は必ずベースとして設置。プランゾーンで68を更新(捨てる)ループに入らない ----
- //  リアニメ循環の土台。設置可能(=手札/プランにあり色/コストを払える合法手)なら最優先で置く。
- //  ただし対速アグロ(赤単級)では68(黒2無2=4)の即設置がタップアウト=受け崩壊を招き大幅に負け越すため、
- //  強制設置はグラインド相手(緑ランプ/慈愛単/コントロール)に限定し、対速アグロと真の致死圏では通常評価に委ねる。
+ // ---- v7: 冥界の通廊(68)は「相手の脅威ライン(同じ列)に時機を見て張る」----
+ //  無条件即張り(v6)を廃止。相手のスマッシュ脅威が中央/前進で出現・接近している空き列(=脅威列)へ68を張る手を最優先。
+ //  脅威列に張れば、その列で相手アタッカーがバトルに勝っても終了時に墓地(killTarget(winner))=チャンプで確実処理=迎撃が楽。
+ //  時機: 脅威が盤面に無い時(ターン1即張り等)は張らない=タップアウトで受け崩壊(対赤−10pt)を回避。
+ //  安全: 68設置(黒2無2=4)でタップアウトし致死圏に入るなら見送る(生存判定と矛盾させない)。対アグロでも脅威列なら張る(死なない範囲)。
+ //  プラン: 68をplanUpdateで捨てる/回すループは引き続き禁止(捨てず温存し張り時に張る。matchup問わず)。
  try{
   let lethalNow=false; try{ lethalNow=evSurvival(pi).lethal; }catch(_e){}
   let faNow=false; try{ faNow=evOppFastAggro(pi); }catch(_e){}
-  if(EV6_CONV68 && !lethalNow && !faNow){
+  if(EV6_CONV68 && !lethalNow){
    const play68=acts.find(a=>a.t==="playB" && a.no===68);
    if(play68){
-    if(play68.col==null && play68.cols && play68.cols.length){
+    const freeCols=(play68.cols&&play68.cols.length)?play68.cols:(play68.col!=null?[play68.col]:[]);
+    const tcol=ev7Pick68Col(pi,freeCols);          // 相手の脅威列(空き)を脅威度順に選ぶ / 無ければ null=張り時でない
+    if(tcol!=null){                                // (1) 脅威がそのラインに出現・接近している=張り時: 脅威列へ張る(全matchup)
+     const cand=Object.assign({},play68,{col:tcol});
+     let danger=false; try{ danger=await ev7Would68Lethal(pi,cand); }catch(_e){ danger=false; }
+     if(!danger) return cand;                      // タップアウトで致死圏に入らないなら脅威列へ張る=迎撃を楽にする
+    } else if(!faNow && freeCols.length){
+     // (2) 脅威ラインがまだ無い & 対グラインド(緑ランプ/慈愛/コントロール): リアニメ循環の土台として安全なら早期設置。
+     //     自軍が居る列を優先(勝てば墓地→燃料。将来その列が脅威列になれば迎撃も兼ねる)。致死圏に入るなら見送る。
      const colHasUnit=c=>units().some(u=>u.ctrl===pi&&u.c===c);
-     play68.col = (play68.cols.find(colHasUnit)!=null)?play68.cols.find(colHasUnit):play68.cols[0];
+     const c=(freeCols.find(colHasUnit)!=null)?freeCols.find(colHasUnit):freeCols[0];
+     const cand=Object.assign({},play68,{col:c});
+     let danger=false; try{ danger=await ev7Would68Lethal(pi,cand); }catch(_e){ danger=false; }
+     if(!danger) return cand;
+    } else if(faNow && freeCols.length){
+     // (3) 対速アグロ(赤単級) & 脅威ラインまだ無し: 無目的な即張りがタップアウトで致死圏を招くなら候補から除外(温存)。
+     const cand0=Object.assign({},play68,{col:freeCols[0]});
+     let danger=false; try{ danger=await ev7Would68Lethal(pi,cand0); }catch(_e){ danger=false; }
+     if(danger) acts=acts.filter(a=>!(a.t==="playB"&&a.no===68));
     }
-    return play68; // 早期設置を強く優遇(=プラン更新で68を回さない)
    }
   }
-  // 68がプラン公開中(山札トップ)なら、それを墓地へ捨てる planUpdate を選ばない(設置機会まで保持)。
-  // 対速アグロでは受けの答えを掘る必要があるためプラン挙動を縛らない(=通常評価に委ねる)。
+  // 68がプラン公開中(山札トップ)なら、それを墓地へ捨てる planUpdate を選ばない(設置機会まで温存)。matchup問わず禁止。
   const p0=G.pl[pi];
-  if(EV6_CONV68 && !faNow && p0 && p0.planUp && p0.deck && p0.deck.length && p0.deck[p0.deck.length-1]===68){
+  if(EV6_CONV68 && p0 && p0.planUp && p0.deck && p0.deck.length && p0.deck[p0.deck.length-1]===68){
    const filt=acts.filter(a=>a.t!=="planUpdate");
    if(filt.length){ acts=filt; }
   }
@@ -6294,7 +6371,7 @@ EVALAI.on=true;
  function addBadge(){ try{
    if(document.getElementById("aiTestBadge")) return;
    const b=document.createElement("div"); b.id="aiTestBadge";
-   b.textContent="実験AIビルド: 新AI v6";
+   b.textContent="実験AIビルド: 新AI v7";
    b.style.cssText="position:fixed;left:6px;bottom:6px;z-index:99999;background:#7a1030;color:#ffd7e2;font:11px/1.4 sans-serif;padding:3px 8px;border:1px solid #ff6b95;border-radius:6px;opacity:.85;pointer-events:none";
    (document.body||document.documentElement).appendChild(b);
  }catch(e){} }
