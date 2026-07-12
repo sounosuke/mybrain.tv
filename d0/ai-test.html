@@ -311,7 +311,7 @@ catch(e){ console.error("Firebase init 失敗:",e); }
 
 <script>
 "use strict";
-const GAME_VERSION="P3.19 AI-TEST (新AI v7) — 実験ビルド";
+const GAME_VERSION="P3.19 AI-TEST (新AI v9) — 実験ビルド";
 const KIFU_FMT=2; // 棋譜の記録フォーマット版(記録項目を増やしたら上げる。読込時に不一致なら警告)
 /* ============ カードデータ ============ */
 const CARDS={};
@@ -6208,7 +6208,7 @@ function ev7ThreatCols(pi){
   let w=0;
   if(u.r===myHome) w=sm+1;                 // 既に自陣でスマッシュ = 最重
   else if(u.r===2) w=sm;                   // 中央=スマッシュ可能
-  else if(u.r===oppHome && u.d && u.d.move) w=sm*0.5; // 敵陣→中央へ前進してスマッシュしうる(接近中)
+  else if(u.r===oppHome) w=sm*((u.d&&u.d.move)?0.5:0.3); // v8: 敵陣のスマッシャーは前進可否に関わらずその列を脆威列と見なす(68を壁として張る価値=手札で腐らせない)
   if(w>0) cols[u.c]=(cols[u.c]||0)+w;
  } }catch(e){}
  return Object.keys(cols).map(c=>({c:+c,w:cols[c]})).sort((a,b)=>b.w-a.w);
@@ -6291,11 +6291,41 @@ async function evChoose(pi,acts,timing){
    }
   }
   // 68がプラン公開中(山札トップ)なら、それを墓地へ捨てる planUpdate を選ばない(設置機会まで温存)。matchup問わず禁止。
+  // v8(常時ON): 最後の“安全な161”(自陣に生存)が1体以下の時、その161を自メインで前線へ自発突撃させる move を除外(色全通の温存)。
+  //  ※ move は常に自メイン(normalOK)の自発行動=バトル中の離脱(ペガサス)とは別経路なので、緊急ブロックを奴うない。
+  if(EV8_ALWAYSON && ev8SafeShabonCount(pi)<=1){
+   const _hm=homeRow(pi);
+   const _f=acts.filter(a=>{ if(a.t!=="move")return true; try{ const u=units().find(x=>x.uid===a.uid); return !(u&&u.no===161&&u.r===_hm); }catch(_e){ return true; } });
+   if(_f.length) acts=_f;
+  }
   const p0=G.pl[pi];
   if(EV6_CONV68 && p0 && p0.planUp && p0.deck && p0.deck.length && p0.deck[p0.deck.length-1]===68){
    const filt=acts.filter(a=>a.t!=="planUpdate");
    if(filt.length){ acts=filt; }
   }
+  // ==== v9 リザーブ枝刈り(クローン非依存・決定的・always-on) ====
+  //  ユーザー指摘「エネと迎撃札を残す(タップアウトしない)」の核心対策。相手に到達スマッシュ脅威(oppCeiling>=1)があり、
+  //  今ターンで詰め切る(致死リーサル)ターンでもない時、迎撃用の最低エネ(reserveTarget)を割ってまでの「純デッキ堀り
+  //  (planMake/planUpdate=盤面もライフも守らない浪費)」を候補から除外する。→ 毎ターン plan 連打でエネを使い切る主因を断ち、
+  //  相手ターンの迎撃サモン/門フラッシュ/反応札のためにエネを必ず残す。クローンの有無に関係なく両経路の手前で常時効く。
+  try{
+   if(EV9.reserve && p0 && G.ap===pi && timing==="main"){
+    const _opp=G.pl[other(pi)];
+    const _oppCeil=maxSmashAgainst(pi);
+    const _lethalPush=(maxSmashAgainst(other(pi))>=7-_opp.smash.length);
+    if(_oppCeil>=1 && !_lethalPush){
+     const _energy=relEnergy(p0).length+relSmash(p0).length;
+     const _life=7-p0.smash.length;
+     let _tgt=(EV9.reserveMin!=null?EV9.reserveMin:2);
+     const _near=_oppCeil-(_life-EV9.buffer); if(_near>0) _tgt=Math.min(5,_tgt+Math.ceil(_near));
+     _tgt=Math.min(_tgt,_energy);
+     if(_energy<=_tgt){ // 迎撃用エネが目標以下 = これ以上デッキ堀りで浪費させない(温存)
+      const _filt=acts.filter(a=>a.t!=="planMake"&&a.t!=="planUpdate");
+      if(_filt.length) acts=_filt;
+     }
+    }
+   }
+  }catch(e){}
  }catch(e){}
  // aiScore で並べ替え(副作用で a.sq/a.to を解決 → シャボン前線判定に必要)
  const ranked=acts.map(a=>({a,s:aiScore(pi,a,timing)})).sort((x,y)=>y.s-x.s);
@@ -6331,17 +6361,145 @@ async function evChoose(pi,acts,timing){
   let v=await evScoreCandidate(pi,a);
   if(v==null) v=-1e12 + s;
   else        v=v + s*1e-3;
+  // v9: リザーブ(迎撃余力の温存/タップアウト回避)をクローン経路の最終スコアにも常時反映(evBoardValue尺度へスケール)。
+  //  aiScore 経由の減点は s*1e-3 でほぼ消えるため、ここで cloneScale を掛けて evBoardValue と同オーダーの重みで効かせる。
+  try{ if(EV9.reserve && v>-1e11) v -= EV9.cloneScale*ev9ReservePenalty(pi,a,timing); }catch(e){}
   if(v>bestV){ bestV=v; best=a; }
  }
  return best;
 }
 
+// ==== 新AI v8: v7 の主要ルール(壁配置/161温存/通廊設置)を「クローンに依存しない軽量 always-on パス」でも適用 ====
+//  真因(実機でv7が壁配置/161温存を制御できないケース): 壁配置(キラー41/グレン121)・161前線温存・シャボンは evBoardValue 内にあり、
+//  これは evScoreCandidate(状態クローン)経由=useClone(oppAggro||lethal)の重い決定でしか評価されない。
+//  相手が aggro と判定されない(自作赤単で cheap<8 等)/非致死の多くのライブ決定では useClone=false となり、
+//  旧 chooseActionImpl へ丈ごと委譲=ルールが実機で効かない。さらに配置マスは aiScore の副作用で旧ロジックが解決するため、クローンの再ランクではマスを直せない。
+//  対策(v8): 純ブロッカーのマス選択・161最後の1体温存・通廊の宙ぶらり防止を、状態クローン無しの決定的判定で常時適用する。
+const EV8_ALWAYSON = parseInt((typeof process!=="undefined"&&process.env&&process.env.EV8_ALWAYSON)||"1"); // 1=常時ON(ブラウザ既定)
+function ev8IsPureBlocker(no){ const c=CARDS[no]; return no===41||no===121||(!!V4_BLOCKERBODY && !!c && (c.sm||0)===0 && (c.pow||0)>=3000 && c.type==="U"); }
+// 純ブロッカー(sm0=攻撃価値なし)は「自陣(壁)=相手の最強スマッシュ脆威の“正面の列”」へ置く。前線(中央=踏まれる)への露出を避ける。
+function ev8WallSquare(pi,a){
+ try{
+  if(!EV8_ALWAYSON) return;
+  if(!a||a.t!=="playU"||!ev8IsPureBlocker(a.no)||!a.sqs||!a.sqs.length) return;
+  const home=homeRow(pi);
+  const homeSqs=a.sqs.filter(function(sq){ return sq[0]===home && !uAt(sq[0],sq[1]); });
+  if(!homeSqs.length) return;                 // 自陣が埋まっている時のみ中央等を許容(現状維持)
+  const tc=(typeof ev7ThreatCols==="function")?ev7ThreatCols(pi):[];
+  for(let i=0;i<tc.length;i++){ const t=tc[i]; const hit=homeSqs.find(function(sq){return sq[1]===t.c;}); if(hit){ a.sq=hit; return; } } // 脆威の正面の列を最優先
+  const mid=homeSqs.find(function(sq){return sq[1]===1;}); a.sq = mid || homeSqs[0];       // なければ中央寄りの列→端
+ }catch(e){}
+}
+// 場に生存中の“安全な”161(自陣=露出していない)の数
+function ev8SafeShabonCount(pi){
+ try{ const home=homeRow(pi); let n=0; for(const u of units()){ if(u.ctrl===pi && u.no===161 && u.r===home) n++; } return n; }catch(e){ return 0; }
+}
+
+// ==== 新AI v9: 「タップアウト回避=エネと迎撃札を残す(迎撃余力を必ず温存)」をクローン非依存の always-on ルール化 ====
+//  真因(ライブでリザーブが沈黙): 生存/迎撃余力(oppCeiling vs 残ライフ, 迎撃札/エネの温存)は evBoardValue(状態クローン)
+//   の中でしか評価されず、useClone=(oppAggro||lethalNow)=偽 の多くのライブ決定(=旧 chooseActionImpl/aiScore へ丸委譲)
+//   では沈黙する。さらに useClone=真でも初期ランクは reserve を知らない aiScore なので、タップアウト手が top-K を占めると
+//   クローンでも受け手を選べない。結果、AIがエネと迎撃札を使い切って(タップアウトして)相手の次ターンに詰む。
+//  対策(v9): 「この手を打つと相手の次ターン最大スマッシュ(oppCeiling)を迎撃する余力(残エネ+迎撃札+壁)が残ライフを
+//   守れなくなる/迎撃サモン用の最低エネすら無くなる」なら、その攻撃的・浪費的な手を aiScore に常時(クローン不要)で減点する。
+//   aiScore は 非クローン経路(_origChooseActionImpl_EV3→aiDecide→argmax aiScore)でも クローン経路(初期ランク)でも共有される
+//   ため、この減点は全ライブ決定に効く(=always-on)。EV_SIM(クローン先読み)中は evBoardValue が別途生存を見るので二重掛けを避ける。
+//   判定は状態クローンの重い先読み無し=oppCeiling概算(maxSmashAgainst)と自分の残余エネ/迎撃札/壁だけで決定的に計算する。
+var EV9=(typeof EV9!=="undefined"&&EV9)?EV9:{
+  reserve:1,   // 1=always-on リザーブ減点ON(v9既定)。0で v8 相当(減点なし)=ブラウザで前後比較用に実行時トグル可
+  reserveMin:2,// 相手に脅威がある時、迎撃用に自メイン終了まで残したい最低エネ(既定2=一手の迎撃サモン/門を構えられる量)
+  w:8.0,       // 致死接近時の露出(必要迎撃量>残ライフ方向)1点あたりの減点
+  tapoutW:7.0, // リザーブ目標(迎撃用に残すエネ)を割る=タップアウト方向の手への減点(1エネ不足あたり)
+  reactW:3.0,  // 手札の迎撃(反応)札を自メインで無駄に切る手への減点(温存)
+  buffer:1,    // 「致死の1歩手前」から温存を始める安全マージン(残ライフに対する余裕)
+  arch:1,      // 1=deckArchetype の aggro 取りこぼし補正ON(低コストSM密度の濃いデッキを確実に aggro と拾う)
+  cloneScale:0 // クローン経路の reserve 減点係数。既定0=クローンの evBoardValue(生存/受け)を尊重し、リザーブは決定的枝刈り+aiScore減点で担保(clone減点は評価と競合し不安定なため無効)
+};
+// この手が消費する迎撃資源を概算: {energyTapped=タップされるエネ量, reactiveLost=手札を離れる迎撃札, blockerGain=増える自陣/中央の壁}
+function ev9Consume(pi,a){
+ var out={energyTapped:0,reactiveLost:0,blockerGain:0};
+ try{
+  if(!a||a.t==="pass") return out;
+  if((a.t==="playU"||a.t==="playB"||a.t==="playS")&&a.no!=null&&CARDS[a.no]){
+   var pc=parseCost(CARDS[a.no].play); out.energyTapped=(pc.total||0)+(a.x||0);
+   if(CARDS[a.no].type==="S" && (CARDS[a.no].timing==="バトル"||COMBAT_TRICKS.has(a.no))) out.reactiveLost=1; // 反応札を主メインで切る
+   if(a.t==="playU" && (CARDS[a.no].pow||0)>=2000){ var sq=a.sq||(a.sqs&&a.sqs[0]); if(sq && (sq[0]===homeRow(pi)||sq[0]===2)) out.blockerGain=1; }
+  } else if(a.t==="move"){
+   var u=units().find(function(x){return x.uid===a.uid;});
+   if(u&&u.d&&u.d.move) out.energyTapped=parseCost(u.d.move).total||0;
+  } else if(a.t==="planMake"||a.t==="planUpdate"){ out.energyTapped=1; }
+ }catch(e){}
+ return out;
+}
+// always-on リザーブ減点: 自メインで「この手を打つと相手の次ターン最大スマッシュを迎撃する余力が残ライフを守れない/最低エネも残らない」なら減点
+function ev9ReservePenalty(pi,a,timing){
+ if(!EV9.reserve) return 0;
+ if(EV_SIM) return 0;                        // クローン先読み中は evBoardValue が生存を見る(二重掛け回避)
+ if(timing!=="main" || G.ap!==pi) return 0;  // 自分のメイン(=直後に相手ターンが来る)だけ迎撃余力を温存する
+ var p=G.pl[pi], opp=G.pl[other(pi)];
+ var oppCeiling=maxSmashAgainst(pi);         // 相手の次ターン最大スマッシュ(概算)。脅威が無ければ温存不要=展開優先
+ if(oppCeiling<1) return 0;
+ var oppRoom=7-opp.smash.length;
+ if(maxSmashAgainst(other(pi))>=oppRoom) return 0; // 今ターンで勝ち切れる=リーサル優先で温存しない
+ var lifeHeadroom=7-p.smash.length;
+ var energyRel=relEnergy(p).length+relSmash(p).length;
+ if(energyRel<1) return 0;                          // 既に残エネが無い=温存しようがない(=これ以上の浪費は無い)
+ var c=ev9Consume(pi,a);
+ var energyAfter=Math.max(0,energyRel-c.energyTapped);
+ // 迎撃(相手ターンの応酬=迎撃サモン/門フラッシュ/反応札)用に残したいエネ量(リザーブ目標)。
+ //  基本は reserveMin(既定2=一手の迎撃サモン/門を構えられる量)。相手のスマッシュが残ライフに迫るほど必要迎撃量に応じて多めに温存する。
+ //  ※これにより「毎ターン planMake/planUpdate 等でエネを使い切る(タップアウト)」浪費を、目標を割る時点で早めに抑止する。
+ var base=(EV9.reserveMin!=null?EV9.reserveMin:2);
+ var target=base;
+ var nearLethal=oppCeiling-(lifeHeadroom-EV9.buffer);            // >0 で致死接近(残ライフ−bufferを超えるスマッシュが来る)
+ if(nearLethal>0) target=Math.min(5, base+Math.ceil(nearLethal));
+ target=Math.min(target, energyRel);                            // 元々その量が無いなら、有るぶんだけを目標にする(不可能な温存は課さない)
+ var pen=0;
+ // (A) リザーブ目標を割るぶんを減点=タップアウト回避/迎撃余力の温存。壁ユニット設置は迎撃余力を増やす手なので割引(0.4)。
+ var shortfall=target-energyAfter;
+ if(shortfall>0){ var scale=c.blockerGain?0.4:1.0; pen += EV9.tapoutW*shortfall*scale; }
+ // (B) 致死接近時は露出(必要迎撃量>残ライフ方向)そのものも上乗せ減点(受けを最優先へ)。
+ if(nearLethal>0) pen += EV9.w*Math.min(nearLethal,6);
+ // (C) 手札の迎撃(反応)札を自メインで無駄に切る手を減点=反応札の温存。
+ if(c.reactiveLost>0) pen += EV9.reactW;
+ return pen;
+}
+// aiScore を包み、reserve 減点を全ライブ決定(非クローン/クローン初期ランク双方)へ常時適用する。原関数の副作用(a.sq/a.to 解決)を保つため先に呼ぶ。
+var _origAiScore_EV9=aiScore;
+aiScore=function(pi,a,timing){
+ var s=_origAiScore_EV9(pi,a,timing);
+ try{ s -= ev9ReservePenalty(pi,a,timing); }catch(e){}
+ return s;
+};
+// deckArchetype の aggro 取りこぼし補正: 低コスト(≤2)SMボディの密度が濃い(枚数>=6 かつ 比>=0.40)デッキは aggro とみなす。
+//  既存の cheap>=8 判定に "追加" するだけ(control→aggro の一方向のみ)。赤単は既に aggro、緑ランプ/通廊ペガサスは密度が薄く非該当=分類不変。
+var _origDeckArchetype_EV9=deckArchetype;
+deckArchetype=function(p){
+ var base; try{ base=_origDeckArchetype_EV9(p); }catch(e){ return "control"; }
+ if(base==="aggro" || !EV9.arch) return base;
+ try{ var dk=p&&p.deckDef; if(!dk||!dk.list) return base;
+  var cheap=0,ut=0; dk.list.forEach(function(e){ var no=(typeof e==="number")?e:e.no, n=(typeof e==="number")?2:e.n, cd=CARDS[no];
+   if(cd&&cd.type==="U"){ ut+=n; if(totalCost(no)<=2&&(cd.sm||0)>=1) cheap+=n; } });
+  if(ut>0 && cheap>=6 && cheap/ut>=0.40) return "aggro";
+ }catch(e){}
+ return base;
+};
+// ==== end 新AI v9 ====
+
 const _origChooseActionImpl_EV3=chooseActionImpl;
 chooseActionImpl=async function(pi,acts,timing){
  const p=G.pl[pi];
+ // v8保険: ライブ開始経路で newGame ラッパが未実行/未登録でも、AI席は必ず新AIへ接続する(EVALAI.seats を遅延登録)。
+ try{ if(EVALAI.on && !EV_SIM && p && p.isAI && !(EVALAI.seats&&EVALAI.seats.has&&EVALAI.seats.has(pi))){
+   if(!EVALAI.seats||!EVALAI.seats.has) EVALAI.seats=new Set();
+   if(G&&G.pl) G.pl.forEach((pp,ii)=>{ if(pp&&pp.isAI) EVALAI.seats.add(ii); });
+ } }catch(_e){}
  if(!EV_SIM && p.isAI && evNewAI(pi)){
-  try{ return await evChoose(pi,acts,timing); }
-  catch(e){ return aiDecide(pi,acts,timing); }
+  let r;
+  try{ r= await evChoose(pi,acts,timing); }
+  catch(e){ r= aiDecide(pi,acts,timing); }
+  try{ ev8WallSquare(pi,r); }catch(_e){} // v8: 壁(キラー/グレン)の配置マスを脆威列の自陣壁へ(常時ON・クローン不要)
+  return r;
  }
  return _origChooseActionImpl_EV3(pi,acts,timing);
 };
@@ -6365,13 +6523,47 @@ EVALAI.on=true;
    P.n++; P.sum+=dt; P.last=dt; if(dt>P.max)P.max=dt; if(dt>=1)P.heavy++; }catch(e){}
   return r; };
 })();
+// ==== v9 検証ハーネス: リザーブ(迎撃余力の温存/タップアウト)をライブ経路で実測するための計測フックと露出 ====
+//  ・window.__EV9.trace=true の間だけ、各AI席のメイン終了(=main で pass を返した瞬間=全プレイ完了後)に生存指標を記録する。
+//  ・G/EV_SIM は let(非window)なので、テスト駆動用に必要な関数/状態を window.__D0 に露出する(挙動には一切影響しない)。
+(function(){
+ var root=(typeof window!=="undefined"?window:globalThis);
+ root.__EV9=EV9; root.__EV9.trace=false; root.__EV9.log=[];
+ root.__D0={
+   getG:function(){return G;}, get EV_SIM(){return EV_SIM;},
+   newGame:function(){return newGame.apply(null,arguments);},
+   runGame:function(){return runGame();},
+   deckArchetype:function(p){return deckArchetype(p);},
+   evSurvival:function(pi){return evSurvival(pi);},
+   maxSmashAgainst:function(pi){return maxSmashAgainst(pi);},
+   relEnergy:function(p){return relEnergy(p);}, relSmash:function(p){return relSmash(p);},
+   evReactiveCards:function(p){return evReactiveCards(p);},
+   EVALAI:EVALAI, resetLeak:function(){ if(typeof ev6LeakReset==="function") ev6LeakReset(); }, getLeak:function(){return EV6LEAK;},
+   FX:(typeof FX!=="undefined"?FX:null), CARDS:(typeof CARDS!=="undefined"?CARDS:null), units:function(){return units();}
+ };
+ // メイン終了(=直後に相手ターン)の迎撃余力を記録する。smashPhase(p) の入口=priorityRound("main") 直後=全プレイ完了後の残余状態。
+ if(typeof smashPhase!=="undefined"){
+  var _sp=smashPhase;
+  smashPhase=async function(p){
+   try{ if(root.__EV9.trace && !EV_SIM && p){
+     var pi=p.i, S=evSurvival(pi), relE=relEnergy(p).length+relSmash(p).length;
+     root.__EV9.log.push({ turn:Math.floor(G.turnNo/2)+1, seat:pi, deck:(p.deckDef&&p.deckDef.name)||"", newAI:(typeof evNewAI==="function"&&evNewAI(pi)),
+       relEnergy:relE, reactive:evReactiveCards(p).length, hand:p.hand.length,
+       oppCeiling:S.oppCeiling, interception:Math.round(S.interception*100)/100,
+       life:S.lifeHeadroom, deficit:Math.round(S.deficit*100)/100,
+       tapout:(relE===0), covered:(S.interception>=S.oppCeiling), smash:p.smash.length });
+   } }catch(e){}
+   return await _sp.call(this,p);
+  };
+ }
+})();
 // 画面に「実験AIビルド」バッジ(固定表示・pointer-events:none でプレイヤー操作に一切干渉しない)
 (function(){
  if(typeof document==="undefined") return;
  function addBadge(){ try{
    if(document.getElementById("aiTestBadge")) return;
    const b=document.createElement("div"); b.id="aiTestBadge";
-   b.textContent="実験AIビルド: 新AI v7";
+   b.textContent="実験AIビルド: 新AI v9";
    b.style.cssText="position:fixed;left:6px;bottom:6px;z-index:99999;background:#7a1030;color:#ffd7e2;font:11px/1.4 sans-serif;padding:3px 8px;border:1px solid #ff6b95;border-radius:6px;opacity:.85;pointer-events:none";
    (document.body||document.documentElement).appendChild(b);
  }catch(e){} }
