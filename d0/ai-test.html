@@ -311,7 +311,7 @@ catch(e){ console.error("Firebase init 失敗:",e); }
 
 <script>
 "use strict";
-const GAME_VERSION="P3.19 AI-TEST (新AI v14 (赤単・除去評価)) — 実験ビルド";
+const GAME_VERSION="P3.19 AI-TEST (新AI v15 (赤単・プランエンジン)) — 実験ビルド";
 const KIFU_FMT=2; // 棋譜の記録フォーマット版(記録項目を増やしたら上げる。読込時に不一致なら警告)
 /* ============ カードデータ ============ */
 const CARDS={};
@@ -2579,6 +2579,67 @@ function removalResScore(pi,a,tgt,ctx){
  if(ctx.losing)s+=1;                               // バトル中: 撃たなければ負ける自ユニットを救う
  return s;
 }
+// 【RED_AGGRO_V2】プランゾーンを自ターンのカードプラス盤面エンジンとして使うための余剰エネ/リザーブ判定。
+//  リザーブ = 「今このコール時点でまだ前進できる released SM>=1 アタッカーを攻撃マスへ運ぶ移動エネ」 + 迎撃用1。
+//  ※ aggroPolicy は前進(move)を掘りより先に return するため、プランエンジンに到達する時点で前進可能なユニットは
+//    出し切っている(=need≈0)。それでも「今このコールで前進可能なユニットが残っていれば」その移動エネは温存する。
+//  余剰エネ = 払える無色エネ(未凍結エネ+未凍結スマッシュ)- リザーブ。余剰でのみプランを掘る=タップアウト防止。
+function aggroClockReserve(pi){
+ const p=G.pl[pi], enemyRow=homeRow(other(pi));
+ const opp=G.pl[other(pi)];
+ const lethalTurn=opp.smash.length+aggroReachThisTurn(pi)>=7;
+ let need=0;
+ for(const u of units()){
+  if(u.ctrl!==pi||u.frozen||(u.d.sm||0)<1||!u.d.move)continue;
+  const finisher=(FX[u.no]&&FX[u.no].haste)||lethalTurn;
+  const target=finisher?enemyRow:2;
+  const curT=Math.abs(u.r-target);
+  if(curT<=0)continue;                                   // 既に攻撃マス(前進不要)
+  // 今このコールで実際に前進できる(target方向の空きマスがある)ユニットのみ移動エネを温存する。
+  const mvc=parseCost(u.d.move).total||1;
+  const dests=(u.d.move?adjSquares(u.r,u.c):[]).filter(([r,c])=>onGridAnywhere(r,c)&&Math.abs(r-target)<curT&&!uAt(r,c));
+  if(dests.length)need+=mvc;                             // 一歩前進ぶんの移動エネを確保
+ }
+ return need+1;                                          // +1 迎撃/応酬リザーブ
+}
+function aggroSpareEnergy(pi){
+ const p=G.pl[pi];
+ return (relEnergy(p).length+relSmash(p).length)-aggroClockReserve(pi);
+}
+// 1ターンあたりのプラン操作(作成/更新)回数。掘りの無限ループ/タップアウトを防ぐ上限管理。
+function aggroPlanOpsThisTurn(pi){
+ const f=G.pl[pi].aiFlags;
+ if(f.planOpsTurn!==G.turnNo){ f.planOpsTurn=G.turnNo; f.planOps=0; }
+ return f.planOps||0;
+}
+function aggroBumpPlanOps(pi){
+ const f=G.pl[pi].aiFlags;
+ if(f.planOpsTurn!==G.turnNo){ f.planOpsTurn=G.turnNo; f.planOps=0; }
+ f.planOps=(f.planOps||0)+1;
+}
+// プランゾーン=カードプラス盤面エンジン。余剰エネがあり掘り上限内なら planMake(トップ公開)を返す。
+//  公開中が非ユニットなら余剰内で1回だけ planUpdate(ユニット掘り)。それ以外は null(=掘らない)。
+//  ※クロック(前進/スマッシュ/リーサル)や除去/トリック等の“やる事”を全て消化した後(best=pass)にのみ呼ぶ設計。
+function aggroPlanEngine(pi,acts){
+ const p=G.pl[pi];
+ if(!RED_AGGRO_V2||G.ap!==pi)return null;
+ const spare=aggroSpareEnergy(pi);
+ const ops=aggroPlanOpsThisTurn(pi);
+ const DIG_LIMIT=2;                                    // 1ターンのプラン操作(作成+更新)の上限
+ if(spare<2||ops>=DIG_LIMIT||p.deck.length<=1)return null;
+ if(!p.planUp){
+  const mk=acts.find(a=>a.t==="planMake");
+  if(mk){ aggroBumpPlanOps(pi); return mk; }           // トップを公開(次コールでユニットなら上のplanU分岐で出す)
+ } else {
+  const top=p.deck[p.deck.length-1];
+  const topUnit=CARDS[top]&&CARDS[top].type==="U";
+  if(!topUnit&&p.deck.length>2){                        // 非ユニット公開中: 余剰内で1回だけユニットを掘る
+   const up=acts.find(a=>a.t==="planUpdate");
+   if(up){ aggroBumpPlanOps(pi); return up; }
+  }
+ }
+ return null;
+}
 function aggroPolicy(pi,acts,timing){
  const p=G.pl[pi], opp=G.pl[other(pi)], myTurn=G.ap===pi;
  const pass=acts.find(a=>a.t==="pass")||{t:"pass"};
@@ -2700,13 +2761,17 @@ function aggroPolicy(pi,acts,timing){
   const planU=acts.find(a=>a.t==="playU"&&a.plan);
   if(planU){ planU.sq=aggroPlace(pi,planU); return planU; }
  }
- // (b) それ以外の手札ユニットは出さない。プラン作成/更新は瀕死時のみ。移動/詰め札を評価で最善手。
+ // (b) それ以外の手札ユニットは出さない。移動/詰め札を評価で最善手。
  let pool=acts.filter(a=>a.t!=="playU");
  if(RED_AGGRO_V2){ // #31で今ターン廃棄予定の自ユニットは「前進(移動)」候補からも除外(移動エネを払って前進→即廃棄の無駄を防ぐ)。
   const ps=aggroExtraSacPlan(pi);
   if(ps)pool=pool.filter(a=>!(a.t==="move"&&a.uid===ps.uid));
  }
- if(opp.smash.length<6)pool=pool.filter(a=>a.t!=="planMake"&&a.t!=="planUpdate");
+ if(RED_AGGRO_V2){
+  // プラン(作成/更新)は下部の専用プランエンジン(aggroPlanEngine)が best=pass 時=「他にやる事が無い」時にだけ
+  //  余剰エネで処理する。scoreBest が除去/トリック(#31等)より先にプランを選ぶと有用手を潰すので、プールからは常に除外。
+  pool=pool.filter(a=>a.t!=="planMake"&&a.t!=="planUpdate");
+ } else if(opp.smash.length<6)pool=pool.filter(a=>a.t!=="planMake"&&a.t!=="planUpdate");
  const best=scoreBest(pool.length?pool:[pass]);
  // 負け際(次の相手ターンに詰まされる見込み)で自分のターンにやることが無い(パス)なら、手を無駄にせず
  // 手札からユニットを出して壁/攻め手にする(何もせずターンを終えない)。
@@ -2722,6 +2787,12 @@ function aggroPolicy(pi,acts,timing){
    const anyU=acts.filter(a=>a.t==="playU"&&!(FX[a.no]&&FX[a.no].eotGrave)); // 最後の手段: 出せるユニットを何でも壁に
    if(anyU.length){anyU.sort((a,b)=>totalCost(a.no)-totalCost(b.no));const a=anyU[0];a.sq=aggroPlace(pi,a);return a;}
   }
+ }
+ // 【プランゾーン=カードプラス盤面エンジン】能動手(前進/スマッシュ/リーサル/除去/トリック/壁)を全て消化し、
+ //  なお“やる事が無い”(best=pass)なら、余剰エネでプランを掘って盤面を作る。これが「余ったエネでプラン」の核心。
+ if(RED_AGGRO_V2&&best.t==="pass"){
+  const eng=aggroPlanEngine(pi,acts);
+  if(eng)return eng;
  }
  return best;
 }
@@ -3286,8 +3357,19 @@ function aiScore(pi,a,timing){
   // 山札切れ回避: プランは実質ミル/ドローで山札を減らす。グラインドで掘りすぎると山札切れで自滅する。
   const deckN=p.deck.length;
   if(deckN<=6&&!mustDefend)return -2;              // 残り僅か: 掘らない(デッキアウト負け回避)
-  // 【アグロ】プランは基本使わない(手札を吐いて殴る)。相手が瀕死(残6枚)の時だけ、フィニッシャー(速攻/バースト)を掘って詰める。
-  if(isAggro)return (opp.smash.length>=6)?0.8:-2;
+  // 【アグロ】プランゾーンは自ターンのカードプラス盤面エンジン(RED_AGGRO_V2)。
+  //  余剰エネがあり、公開待ちのプランユニットが無く、山にまだユニットが残るなら productive=正の評価。
+  //  そうでない(タップアウト方向 / 掘る意味が無い)なら瀕死時のみ加点、それ以外は減点(旧挙動)。
+  if(isAggro){
+   if(!RED_AGGRO_V2)return (opp.smash.length>=6)?0.8:-2;   // OFF: 完全復元(瀕死時のみ)
+   if(myTurn){
+    const spare=(relEnergy(p).length+relSmash(p).length)-aggroClockReserve(pi);
+    const pendingPlanU=p.planUp&&p.deck.length&&CARDS[p.deck[p.deck.length-1]]&&CARDS[p.deck[p.deck.length-1]].type==="U";
+    const deckUnit=p.deck.some(no=>CARDS[no]&&CARDS[no].type==="U");
+    if(spare>=2&&!pendingPlanU&&deckUnit&&p.deck.length>1)return 0.8;  // productive: カードプラスの盤面堀り
+   }
+   return (opp.smash.length>=6)?0.8:-2;                    // タップアウト方向/無益: 瀕死時のみ許容
+  }
   if(deckN<=12&&p.hand.length>=2)return -0.6;      // やや薄い&手札に余裕: 温存して手札から展開する
   // 手札が細い&(迎撃必須 or 詰め or 盤面空): プランを掘って答え(迎撃/攻め手)を探す
   if(p.hand.length===0&&canAfford>=3&&(mustDefend||race||rush||!units().some(u=>u.ctrl===pi)))return 2.0;
@@ -6570,7 +6652,11 @@ async function evChoose(pi,acts,timing){
   //  (planMake/planUpdate=盤面もライフも守らない浪費)」を候補から除外する。→ 毎ターン plan 連打でエネを使い切る主因を断ち、
   //  相手ターンの迎撃サモン/門フラッシュ/反応札のためにエネを必ず残す。クローンの有無に関係なく両経路の手前で常時効く。
   try{
-   if(EV9.reserve && p0 && G.ap===pi && timing==="main"){
+   // 【RED_AGGRO_V2】アグロ席の自ターンはプランを「カードプラス盤面エンジン」として余剰エネで使う。
+   //  リザーブ規律は aggroPolicy(aggroClockReserve / 掘り上限)が担うので、ここでの一律プラン除去は掛けない
+   //  (掛けると余剰があってもプランが候補から消え、エンジンが沈黙する)。非アグロ/OFFは従来通り。
+   let _aggroSeat=false; try{ _aggroSeat=RED_AGGRO_V2 && deckArchetype(p0)==="aggro"; }catch(_e){}
+   if(EV9.reserve && p0 && G.ap===pi && timing==="main" && !_aggroSeat){
     const _opp=G.pl[other(pi)];
     const _oppCeil=maxSmashAgainst(pi);
     const _lethalPush=(maxSmashAgainst(other(pi))>=7-_opp.smash.length);
@@ -7024,7 +7110,7 @@ EVALAI.on=true;
  function addBadge(){ try{
    if(document.getElementById("aiTestBadge")) return;
    const b=document.createElement("div"); b.id="aiTestBadge";
-   b.textContent="実験AIビルド: 新AI v14 (赤単・除去評価)";
+   b.textContent="実験AIビルド: 新AI v15 (赤単・プランエンジン)";
    b.style.cssText="position:fixed;left:6px;bottom:6px;z-index:99999;background:#7a1030;color:#ffd7e2;font:11px/1.4 sans-serif;padding:3px 8px;border:1px solid #ff6b95;border-radius:6px;opacity:.85;pointer-events:none";
    (document.body||document.documentElement).appendChild(b);
  }catch(e){} }
