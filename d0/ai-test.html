@@ -311,7 +311,7 @@ catch(e){ console.error("Firebase init 失敗:",e); }
 
 <script>
 "use strict";
-const GAME_VERSION="P3.19 AI-TEST (新AI v16 (赤単・リザーブ規律)) — 実験ビルド";
+const GAME_VERSION="P3.19 AI-TEST (新AI v17 (赤単・エネ発展)) — 実験ビルド";
 const KIFU_FMT=2; // 棋譜の記録フォーマット版(記録項目を増やしたら上げる。読込時に不一致なら警告)
 /* ============ カードデータ ============ */
 const CARDS={};
@@ -2167,7 +2167,7 @@ function aiEnergyChoice(p){
   // V2: 「移動コスト1 かつ 使用コスト<=2」の軽量主砲(=カード1/2/3/4/5)のみ厳密に温存する。
   const isCheapSmasher=no=>CARDS[no].type==="U"&&(CARDS[no].sm||0)>=1&&totalCost(no)<=3;
   const isLightAttacker=no=>CARDS[no].type==="U"&&!!CARDS[no].move&&parseCost(CARDS[no].move).total<=1&&totalCost(no)<=2;
-  if(energyN>=4)return null;                                    // 十分なエネ → 埋めない(手札を吐いて詰める)【energy>=4 stop 維持】
+  if(energyN>=(RED_AGGRO_V2?6:4))return null;                   // V2: 最低6エネまでチャージ(オーナー指摘)。OFF: 旧4で停止
   const cnt={};p.hand.forEach(x=>cnt[x]=(cnt[x]||0)+1);
   const SOUL=30;                                                // チャレンジャー・ソウル: 手札に抱えるのは2枚まで。3枚目以降はエネへ。
   // 速攻(レイザー/ブラスト)は詰めの切り札で手札1体あれば十分 → 余剰(2体目以降)は埋めてよい。
@@ -2213,7 +2213,18 @@ function aiEnergyChoice(p){
    const keepCnt={29:1,31:1,30:2};                                                 // 反応/パンプ札の温存最低枚数(最後の1枚は保護)
    const buryOrder=oppAggro?[31,30,29]:[29,31,30];
    for(const no of buryOrder){ if(cnt2[no]>(keepCnt[no]||0))return no; }            // keep数を超える余剰コピーのみ埋める(最後の#31/#29/#30は温存)
-   return null;                                                                    // 残りは 1-5 + 最後の反応/パンプ札のみ → 迎撃リザーブを壊さないため見送る(チャージしない)
+   // 【エネ発展】ここまで埋める札が無い=手札が軽量主砲(1-5)＋最後の反応札のみ。それでもエネは要る(energy<4)ので、
+   //  "最もkeep価値が低い軽量ユニット"を1枚だけエネへ回す(オーナーも使い捨てレイザー/弱い駒/重複はチャージする)。
+   //  ただし手札のユニットが2体以上ある時だけ=展開燃料を最低1体は残す。反応/パンプ札の最後の1枚は埋めない。
+   const uHand=sorted.filter(no=>CARDS[no].type==="U");
+   if(uHand.length>=2){
+    const rankKeep=no=>{ let v=(CARDS[no].pow||0)+((FX[no]&&FX[no].onAttack)||0)+((CARDS[no].sm||0)*1500);
+     if(FX[no]&&FX[no].eotGrave)v-=6000;   // 使い捨て(#5レイザー: ターン終了時に自壊)は最優先で資源化
+     if(cnt2[no]>1)v-=2000;                // 重複は展開しきれない余り→埋めてよい
+     return v; };
+    return uHand.slice().sort((a,b)=>rankKeep(a)-rankKeep(b))[0];                   // keep価値が最小の軽量ユニットをチャージ
+   }
+   return null;                                                                    // ユニットが1体以下=展開燃料を残すためチャージ見送り
   }
   // 非ユニット(余ったソウル等)を先に埋める。無ければユニットを埋めるが、
   // ウィニー戦略では軽いスマッシャーが勝ち筋なので、最も重い(大きい)ユニットをエネに回し、軽い駒を手札に残す。
@@ -2624,14 +2635,14 @@ function aggroClockReserve(pi){
 }
 function aggroSpareEnergy(pi){
  const p=G.pl[pi];
- return (relEnergy(p).length+relSmash(p).length)-aggroClockReserve(pi);
+ return relEnergy(p).length-aggroClockReserve(pi);   // 【オーナー指摘】発展/リザーブの支払い計算にスマッシュは数えない(エネゾーンのみ)
 }
 // 【RED_AGGRO_V2】プランゾーンのユニットを1体プレイした後に、まだ払える(未凍結)エネが何枚残るか。
 //  払える総エネ(未凍結エネ+未凍結スマッシュ) − そのユニットの使用コスト(色+無色の合計=凍結する枚数)。
 //  プランからのユニット展開は「払った後に≥1の迎撃リザーブが残る」時だけ許可し、0までタップアウトしない。
 function aggroSpareAfterPlay(pi,a){
  const p=G.pl[pi];
- const avail=relEnergy(p).length+relSmash(p).length;
+ const avail=relEnergy(p).length;                    // 【オーナー指摘】プレイ後リザーブ判定にスマッシュは数えない(エネゾーンのみ)
  let cost=0; try{ cost=(a&&a.no!=null&&CARDS[a.no])?(parseCost(CARDS[a.no].play).total||0):0; }catch(e){ cost=0; }
  return avail-cost;
 }
@@ -7171,7 +7182,7 @@ EVALAI.on=true;
  function addBadge(){ try{
    if(document.getElementById("aiTestBadge")) return;
    const b=document.createElement("div"); b.id="aiTestBadge";
-   b.textContent="実験AIビルド: 新AI v16 (赤単・リザーブ規律)";
+   b.textContent="実験AIビルド: 新AI v17 (赤単・エネ発展)";
    b.style.cssText="position:fixed;left:6px;bottom:6px;z-index:99999;background:#7a1030;color:#ffd7e2;font:11px/1.4 sans-serif;padding:3px 8px;border:1px solid #ff6b95;border-radius:6px;opacity:.85;pointer-events:none";
    (document.body||document.documentElement).appendChild(b);
  }catch(e){} }
