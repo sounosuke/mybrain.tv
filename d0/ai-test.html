@@ -311,7 +311,7 @@ catch(e){ console.error("Firebase init 失敗:",e); }
 
 <script>
 "use strict";
-const GAME_VERSION="P3.19 AI-TEST (新AI v15 (赤単・プランエンジン)) — 実験ビルド";
+const GAME_VERSION="P3.19 AI-TEST (新AI v16 (赤単・リザーブ規律)) — 実験ビルド";
 const KIFU_FMT=2; // 棋譜の記録フォーマット版(記録項目を増やしたら上げる。読込時に不一致なら警告)
 /* ============ カードデータ ============ */
 const CARDS={};
@@ -2205,10 +2205,15 @@ function aiEnergyChoice(p){
    if(forcedU2.length)return forcedU2.slice().sort((a,b)=>(CARDS[a].pow+(CARDS[a].sm||0)*1500)-(CARDS[b].pow+(CARDS[b].sm||0)*1500))[0];
    // 反応スペルを埋める順: KEEP優先度は #30 > #31 > #29 なので #29→#31→#30 の順に埋める。
    //  ただし対アグロ(ウィニー)は #29(ダーツ)を確保するため #31→#30→#29 の順(#29を最後まで残す)。
+   //  【迎撃リザーブ】ただし #31(トロール)/#29(ダーツ) の“最後の1枚”は絶対に埋めない=迎撃札を必ず手札に残す。
+   //   #30(ソウル=パンプ)の最後の1枚も温存対象。埋められるのは keep 数を超える“余剰コピー”のみ。
+   //   余剰コピーが無ければ(=残りが全て 1-5 + 最後の反応/パンプ札)、保護カードを埋めるより見送る(return null=チャージしない)。
    let oppAggro=false; try{ oppAggro=deckArchetype(G.pl[other(p.i)])==="aggro"; }catch(e){}
+   const cnt2={}; sorted.forEach(x=>cnt2[x]=(cnt2[x]||0)+1);
+   const keepCnt={29:1,31:1,30:2};                                                 // 反応/パンプ札の温存最低枚数(最後の1枚は保護)
    const buryOrder=oppAggro?[31,30,29]:[29,31,30];
-   for(const no of buryOrder){ if(sorted.includes(no))return no; }
-   return null;                                                                    // 残りは全て1-5 → 原則(絶対に埋めない)に従い、埋めずに見送る
+   for(const no of buryOrder){ if(cnt2[no]>(keepCnt[no]||0))return no; }            // keep数を超える余剰コピーのみ埋める(最後の#31/#29/#30は温存)
+   return null;                                                                    // 残りは 1-5 + 最後の反応/パンプ札のみ → 迎撃リザーブを壊さないため見送る(チャージしない)
   }
   // 非ユニット(余ったソウル等)を先に埋める。無ければユニットを埋めるが、
   // ウィニー戦略では軽いスマッシャーが勝ち筋なので、最も重い(大きい)ユニットをエネに回し、軽い駒を手札に残す。
@@ -2370,6 +2375,21 @@ function aggroMaxPump(p){
  const PUMP={30:4000,32:3000,190:2000,192:3000};
  let m=0;
  for(const no of p.hand){ if(PUMP[no]&&canPay(p,parseCost(CARDS[no].play)))m=Math.max(m,PUMP[no]); }
+ return m;
+}
+// 【RED_AGGRO_V2】踏み込み(移動)で使える実効パンプ: そのユニットの移動コストを“実際に支払った後”の残エネ(色まで考慮)で
+//  払えるパンプの最大値を返す。移動が色付きエネ(赤)を消費してパンプ(#30=赤2無1等)が払えなくなる→バトルでパンプできず
+//  負けチャンプ、を確実に防ぐ(枚数だけでなく色残量まで正確に見る)。支払いはシミュレートして必ず元に戻す。
+function aggroPumpAfterMove(p,u){
+ const PUMP={30:4000,32:3000,190:2000,192:3000};
+ let mc; try{ mc=moveCostOf(u); }catch(e){ mc={c:{},n:1}; }
+ const snapE=p.energy.map(e=>e.frozen), snapS=p.smash.map(s=>s.frozen);
+ let m=0;
+ try{
+  payCost(p,{c:mc.c,n:mc.n});                                  // 移動支払いを仮適用
+  for(const no of p.hand){ if(PUMP[no]&&canPay(p,parseCost(CARDS[no].play)))m=Math.max(m,PUMP[no]); }
+ }catch(e){}
+ finally{ p.energy.forEach((e,i)=>e.frozen=snapE[i]); p.smash.forEach((s,i)=>s.frozen=snapS[i]); } // 必ず巻き戻す
  return m;
 }
 // pi が「今ターンに実際に出せる最大スマッシュ」を、盤面ユニットの移動＋手札の速攻の展開込みで、
@@ -2606,6 +2626,15 @@ function aggroSpareEnergy(pi){
  const p=G.pl[pi];
  return (relEnergy(p).length+relSmash(p).length)-aggroClockReserve(pi);
 }
+// 【RED_AGGRO_V2】プランゾーンのユニットを1体プレイした後に、まだ払える(未凍結)エネが何枚残るか。
+//  払える総エネ(未凍結エネ+未凍結スマッシュ) − そのユニットの使用コスト(色+無色の合計=凍結する枚数)。
+//  プランからのユニット展開は「払った後に≥1の迎撃リザーブが残る」時だけ許可し、0までタップアウトしない。
+function aggroSpareAfterPlay(pi,a){
+ const p=G.pl[pi];
+ const avail=relEnergy(p).length+relSmash(p).length;
+ let cost=0; try{ cost=(a&&a.no!=null&&CARDS[a.no])?(parseCost(CARDS[a.no].play).total||0):0; }catch(e){ cost=0; }
+ return avail-cost;
+}
 // 1ターンあたりのプラン操作(作成/更新)回数。掘りの無限ループ/タップアウトを防ぐ上限管理。
 function aggroPlanOpsThisTurn(pi){
  const f=G.pl[pi].aiFlags;
@@ -2643,7 +2672,18 @@ function aggroPlanEngine(pi,acts){
 function aggroPolicy(pi,acts,timing){
  const p=G.pl[pi], opp=G.pl[other(pi)], myTurn=G.ap===pi;
  const pass=acts.find(a=>a.t==="pass")||{t:"pass"};
- const scoreBest=(list)=>{let b=pass,bs=-1e9;for(const a of list){const s=aiScore(pi,a,timing);if(s>bs){bs=s;b=a;}}return b;};
+ // 【負けチャンプ禁止】aiScore が解決した移動先(a.to)が敵ユニットのマスで、実際に払えるパンプを足しても守備側 effPow 未満
+ //  (=自軍だけ死ぬ負けチャンプ。脅威へのチャンプブロックも自軍が消えるだけで脅威は残る)なら、その手は採用しない。
+ //  相打ち(==)・勝ちは許容。移動先が敵陣でも「勝てない踏み込み」はスマッシュできず死ぬだけなのでリーサル例外も設けない。
+ const isLosingChump=(a)=>{
+  if(!RED_AGGRO_V2||!a||a.t!=="move"||!a.to)return false;
+  const mv=units().find(x=>x.uid===a.uid); if(!mv)return false;
+  const o=uAt(a.to[0],a.to[1]); if(!o||o.ctrl===pi)return false;
+  let pmp=0; try{ pmp=aggroPumpAfterMove(p,mv); }catch(e){}
+  const atk=effPow(mv)+((FX[mv.no]&&FX[mv.no].onAttack)||0);   // 攻撃時パンプ込みの実効攻撃力
+  return atk+pmp<effPow(o);
+ };
+ const scoreBest=(list)=>{let b=pass,bs=-1e9;for(const a of list){const s=aiScore(pi,a,timing);if(isLosingChump(a))continue;if(s>bs){bs=s;b=a;}}return b;};
  // バトル中/メイン以外はコンバットトリック等の通常評価に委譲
  if(timing!=="main"||G.battles.length)return scoreBest(acts);
  if(!myTurn){
@@ -2708,13 +2748,15 @@ function aggroPolicy(pi,acts,timing){
    const spare=relEnergy(p).length+relSmash(p).length;
    const mvc=moveCostOf(u).total||1;
    const canStep=goEnemy?(canCharge||holdSoul):(spare>=mvc+1);
+   // 踏み込みで実際に払えるパンプ(移動を実際に払った後の残エネ・色まで考慮)だけを勝敗計算に入れる=負けチャンプ防止。
+   const stepPump=aggroPumpAfterMove(p,u);
    if(canStep){
-    const beat=mv.dests.filter(d=>{if(distT(d)>=curT)return false;const o=uAt(d[0],d[1]);return o&&o.ctrl!==pi&&effPow(u)+pump>effPow(o);});
+    const beat=mv.dests.filter(d=>{if(distT(d)>=curT)return false;const o=uAt(d[0],d[1]);return o&&o.ctrl!==pi&&effPow(u)+stepPump>effPow(o);});
     if(beat.length){mv.to=beat.sort((a,b)=>distT(a)-distT(b))[0];return mv;}
    }
    // 中央到達済み(非詰め): エネ余裕があり敵陣に倒せるブロッカーがいれば、踏み込んで割る(割った先で今ターン殴る)。
    if(u.r===2&&!goEnemy&&spare>=mvc+1){
-    const beatDeep=mv.dests.filter(d=>{if(Math.abs(d[0]-enemyRow)>=Math.abs(u.r-enemyRow))return false;const o=uAt(d[0],d[1]);return o&&o.ctrl!==pi&&effPow(u)+pump>effPow(o);});
+    const beatDeep=mv.dests.filter(d=>{if(Math.abs(d[0]-enemyRow)>=Math.abs(u.r-enemyRow))return false;const o=uAt(d[0],d[1]);return o&&o.ctrl!==pi&&effPow(u)+stepPump>effPow(o);});
     if(beatDeep.length){mv.to=beatDeep[0];return mv;}
    }
   }
@@ -2758,8 +2800,12 @@ function aggroPolicy(pi,acts,timing){
  // 【設計点3】プランゾーンが表で、エネが1でも残れば(=そのplayUが生成されている)プランのユニットを出す。掘った分を無駄にしない。
  //  ※手札からのユニット展開は自ターンには行わない(原則維持)。プランからの展開のみ許可(opp.smash>=6ゲートを緩和)。
  if(RED_AGGRO_V2){
-  const planU=acts.find(a=>a.t==="playU"&&a.plan);
-  if(planU){ planU.sq=aggroPlace(pi,planU); return planU; }
+  let planU=acts.find(a=>a.t==="playU"&&a.plan);
+  // 【リザーブ規律】プランのユニットは「使用コストを払った後もエネが≥1残る」時だけ出す(タップアウト防止)。
+  //  例外: 今ターン詰め切れる(lethalTurn)なら1点でも惜しくないので0まで払ってよい。
+  //  速攻ユニットが非リーサルでプラン公開中の時も、この規律で0まで払わない(神速ブラスト等のタップアウト防止)。
+  if(planU&&!lethalTurn&&aggroSpareAfterPlay(pi,planU)<1)planU=null;
+  if(planU){ const sq=aggroPlace(pi,planU); if(sq){ planU.sq=sq; return planU; } } // 安全マスが無い(全て負けチャンプ)なら出さず後続へ
  }
  // (b) それ以外の手札ユニットは出さない。移動/詰め札を評価で最善手。
  let pool=acts.filter(a=>a.t!=="playU");
@@ -2772,7 +2818,7 @@ function aggroPolicy(pi,acts,timing){
   //  余剰エネで処理する。scoreBest が除去/トリック(#31等)より先にプランを選ぶと有用手を潰すので、プールからは常に除外。
   pool=pool.filter(a=>a.t!=="planMake"&&a.t!=="planUpdate");
  } else if(opp.smash.length<6)pool=pool.filter(a=>a.t!=="planMake"&&a.t!=="planUpdate");
- const best=scoreBest(pool.length?pool:[pass]);
+ let best=scoreBest(pool.length?pool:[pass]); // scoreBest 内で負けチャンプの移動は既に除外される
  // 負け際(次の相手ターンに詰まされる見込み)で自分のターンにやることが無い(パス)なら、手を無駄にせず
  // 手札からユニットを出して壁/攻め手にする(何もせずターンを終えない)。
  if(best.t==="pass"&&(p.smash.length+maxSmashAgainst(pi)>=7)){
@@ -2780,7 +2826,9 @@ function aggroPolicy(pi,acts,timing){
    // 【Issue1】自ターンは手札からユニットを出さない(原則)。壁フォールバックでも、
    //  許可するのは「速攻(=上のリーサル判定で処理済み)」と「プランゾーンのユニット」のみ。手札ユニットは出さない。
    const planDep=acts.find(a=>a.t==="playU"&&a.plan);
-   if(planDep){ planDep.sq=aggroPlace(pi,planDep); return planDep; }
+   // 壁フォールバックでも、プランのユニットは払った後にエネ≥1が残る時だけ出す(自ターンの詰めでない限りタップアウトしない=迎撃リザーブ温存)。
+   //  さらに負けチャンプになる配置しか無ければ出さない(aggroPlace が null)。
+   if(planDep&&(lethalTurn||aggroSpareAfterPlay(pi,planDep)>=1)){ const sq=aggroPlace(pi,planDep); if(sq){ planDep.sq=sq; return planDep; } }
   } else {
    const dep=aggroPickDeploy(pi,acts);
    if(dep)return dep;
@@ -2818,18 +2866,31 @@ function aggroPickDeploy(pi,acts){
  if(!ok.length)return null;
  // 出す順: 安いスマッシャーから(2コスト以下優先、SM持ち優先)
  ok.sort((a,b)=> totalCost(a.no)-totalCost(b.no) || ((CARDS[b.no].sm||0)-(CARDS[a.no].sm||0)) );
- const chosen=ok[0];
- chosen.sq=aggroPlace(pi,chosen);
- return chosen;
+ // 安全に置ける(負けチャンプにならない)最初のユニットを配置。全て負けチャンプなら展開しない(温存)。
+ for(const chosen of ok){ const sq=aggroPlace(pi,chosen); if(sq){ chosen.sq=sq; return chosen; } }
+ return null;
 }
 // スタック上の未解決の自軍ユニットスペルが、このマスに向かっているか(=先に解決すると埋まって後発が自壊する)。
 function pendingSelfUnitAt(pi,r,c){
  return G.stacks.some(st=>st.some(x=>x&&x.kind==="spell"&&x.ctrl===pi&&x.sq&&CARDS[x.no]&&CARDS[x.no].type==="U"&&x.sq[0]===r&&x.sq[1]===c));
 }
 function aggroPlace(pi,a){
- const hr=homeRow(pi);
+ const p=G.pl[pi], hr=homeRow(pi);
  // 既にスタック上の自軍ユニットが向かっているマスは除外(2枚同じマスに出して自壊するのを防ぐ)。
- const usable=a.sqs.filter(([r,c])=>!pendingSelfUnitAt(pi,r,c));
+ let usable=a.sqs.filter(([r,c])=>!pendingSelfUnitAt(pi,r,c));
+ if(RED_AGGRO_V2){
+  // 【負けチャンプ禁止】敵ユニットのいるマスへ出す=即バトル。攻撃側パワー(パンプ込み)が守備側 effPow 未満なら
+  //  自軍だけ死ぬ=負けチャンプ。そのマスは避ける(大砲蜘蛛2000をマキリ3000へ出す等の自殺展開を禁止)。相打ち(==)は許容。
+  //  安全マスが1つも無ければ null を返す=この配置は行わない(呼び出し側がスキップ)。負けバトルに突っ込むより温存が正。
+  //  ※配置(凍結して出る/相手ターンの展開)は、その場のパンプに賭けない=自パワー(基礎)のみで勝敗を判定する。
+  //   パンプ前提の踏み込みは前進(move)経路が別途「実際に勝てる時だけ」処理する(こちらは凍結体を賭けない)。
+  if(!usable.length)usable=a.sqs.slice();
+  const myPow=((CARDS[a.no]&&CARDS[a.no].pow)||0)+((FX[a.no]&&FX[a.no].onAttack)||0); // 攻撃時パンプ込み(配置→即バトルでも攻撃側)
+  const losesAt=(r,c)=>{ const o=uAt(r,c); return o&&o.ctrl!==pi&&myPow<effPow(o); };
+  const safe=usable.filter(([r,c])=>!losesAt(r,c));
+  if(!safe.length)return null;                           // 全ての配置先が負けチャンプ → 配置しない(温存)
+  usable=safe;
+ }
  const sqs=usable.length?usable:a.sqs;
  const home=sqs.filter(([r,c])=>r===hr);                   // 自陣(homeRow)のマスに置く(凍って出て次ターン始動)
  const cand=home.length?home:sqs;
@@ -3318,7 +3379,7 @@ function aiScore(pi,a,timing){
     }
     else if(myEff+maxPump>oPow)                                               // パンプで勝てる: 相手の迎撃予定を崩してテンポを取る
      s=2.6+oPow/2500-0.4+(threat?3+(occ.d.sm||0):0);                          // ソウル1枚のコスト分だけ割引
-    else s=threat?0.5:-3;                                                     // 負けでも他に手が無ければ突っ込む
+    else s=(threat&&!(RED_AGGRO_V2&&isAggro))?0.5:-3;                          // 負けでも他に手が無ければ突っ込む(V2アグロは負けチャンプ=自軍が死ぬだけで脅威は残る→突っ込まない)
    } else if(!occ&&fwd){
     s=1.0+u.d.sm*0.6;
     // 相手の色から出うる最大の本体(天井)を超えられる大型だけが、敵陣で踏み潰されず安全。
@@ -7110,13 +7171,45 @@ EVALAI.on=true;
  function addBadge(){ try{
    if(document.getElementById("aiTestBadge")) return;
    const b=document.createElement("div"); b.id="aiTestBadge";
-   b.textContent="実験AIビルド: 新AI v15 (赤単・プランエンジン)";
+   b.textContent="実験AIビルド: 新AI v16 (赤単・リザーブ規律)";
    b.style.cssText="position:fixed;left:6px;bottom:6px;z-index:99999;background:#7a1030;color:#ffd7e2;font:11px/1.4 sans-serif;padding:3px 8px;border:1px solid #ff6b95;border-radius:6px;opacity:.85;pointer-events:none";
    (document.body||document.documentElement).appendChild(b);
  }catch(e){} }
  if(document.body) addBadge(); else document.addEventListener("DOMContentLoaded",addBadge);
 })();
 // ==== end AI-TEST グルー ====
+// ==== TEST-ONLY: per-seat RED_AGGRO_V2 override (harness用) ====
+//  通常プレイでは globalThis.__V2_SEATS が null/undefined のため完全に不活性(INERT)。
+//  ハーネスが globalThis.__V2_SEATS = new Set([...新AIを使う席]) を設定すると、
+//  各AI判断のエントリで「その判断を下している席」に応じて RED_AGGRO_V2 を切り替える。
+//  エンジンは1席ずつ同期的に判断するため、各エントリで都度フラグを立て直せば席別挙動になる。
+(function(){
+ var root=(typeof window!=="undefined"?window:globalThis);
+ if(root.__V2_SEATS===undefined) root.__V2_SEATS=null;
+ function _v2apply(seat){
+  var S=root.__V2_SEATS;
+  if(S!=null && typeof seat==="number" && S.has) RED_AGGRO_V2 = S.has(seat);
+  // 検証用トレース: root.__V2_TRACE が配列のときだけ (席, フラグ値) を記録(通常は不活性)。
+  if(Array.isArray(root.__V2_TRACE) && typeof seat==="number") root.__V2_TRACE.push({seat:seat, v2:RED_AGGRO_V2});
+ }
+ // 各AI判断エントリ(いずれも判断席を受け取る)を包み、入口でフラグを席別に設定。
+ var _cai=chooseActionImpl;
+ chooseActionImpl=async function(pi,acts,timing){ _v2apply(pi); return await _cai.call(this,pi,acts,timing); };
+ var _aec=aiEnergyChoice;
+ aiEnergyChoice=function(p){ _v2apply(p&&p.i); return _aec.call(this,p); };
+ var _asc=aiSmashChoice;
+ aiSmashChoice=function(p,cands){ _v2apply(p&&p.i); return _asc.call(this,p,cands); };
+ var _apt=aiPickTargets;
+ aiPickTargets=function(pi,spec,cands,n){ _v2apply(pi); return _apt.call(this,pi,spec,cands,n); };
+ var _aps=aiPickSq;
+ aiPickSq=function(pi,u,ss){ _v2apply(pi); return _aps.call(this,pi,u,ss); };
+ // ハーネスから駆動できるように set/get を露出(挙動には影響しない)。
+ root.__setV2Seats=function(arr){ root.__V2_SEATS=(arr==null?null:new Set(arr)); };
+ root.__getV2Seats=function(){ return root.__V2_SEATS; };
+ root.__getRedAggroV2=function(){ return RED_AGGRO_V2; };
+ root.__setRedAggroV2=function(v){ RED_AGGRO_V2=v; };
+})();
+// ==== end TEST-ONLY per-seat override ====
 
 </script>
 </body>
