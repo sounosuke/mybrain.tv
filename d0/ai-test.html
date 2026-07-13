@@ -311,7 +311,7 @@ catch(e){ console.error("Firebase init 失敗:",e); }
 
 <script>
 "use strict";
-const GAME_VERSION="P3.19 AI-TEST (新AI v11) — 実験ビルド";
+const GAME_VERSION="P3.19 AI-TEST (新AI v12 (赤単リワーク)) — 実験ビルド";
 const KIFU_FMT=2; // 棋譜の記録フォーマット版(記録項目を増やしたら上げる。読込時に不一致なら警告)
 /* ============ カードデータ ============ */
 const CARDS={};
@@ -1318,7 +1318,7 @@ async function performAction(pi,act){
  else{const hi=p.hand.indexOf(no);p.hand.splice(hi,1);}
  const conv=!!(act.convSet&&sq&&act.convSet.has(sq[0]+","+sq[1]));
  cur().push({kind:"spell",ctrl:pi,no,sq,col,tgts,x:xVal,conv,fromHand:!act.plan,label:`${d.type==="U"?"ユニット":d.type==="B"?"ベース":"ストラテジー"}: ${d.name}${cost.x?`(X=${xVal})`:""}${conv?"(召集)":""}`});
- log(`${p.name}: 《${d.name}》をプレイ${sq?`(${sqName(sq[0],sq[1],0)})`:""}${cost.x?` X=${xVal}`:""}`,pi?"ai":"me");
+ log(`${p.name}: 《${d.name}》をプレイ${sq?`(${sqName(sq[0],sq[1],0)})`:""}${cost.x?` X=${xVal}`:""}${act.plan?" [プランから]":""}`,pi?"ai":"me");
 }
 function sqName(r,c,pov){const area=r===2?"中央":(r===homeRow(pov)?"自軍":"敵軍");return `${area}/${["左","中","右"][pov===0?c:2-c]}`;}
 /* ============ 解決 ============ */
@@ -2158,13 +2158,23 @@ function aiEnergyChoice(p){
  const energyN=p.energy.length;
  // 【アグロ】軽量スマッシャーは埋めず並べて詰める。カーブを回せるエネ(≈4)が貯まったら、それ以上埋めず手札を全部展開に回す。
  if(deckArchetype(p)==="aggro"){
+  // 【設計点1】温存集合。旧: cost<=3 のSM持ち(6/8/9まで過保護)。
+  // V2: 「移動コスト1 かつ 使用コスト<=2」の軽量主砲(=カード1/2/3/4/5)のみ厳密に温存する。
   const isCheapSmasher=no=>CARDS[no].type==="U"&&(CARDS[no].sm||0)>=1&&totalCost(no)<=3;
-  if(energyN>=4)return null;                                    // 十分なエネ → 埋めない(手札を吐いて詰める)
+  const isLightAttacker=no=>CARDS[no].type==="U"&&!!CARDS[no].move&&parseCost(CARDS[no].move).total<=1&&totalCost(no)<=2;
+  if(energyN>=4)return null;                                    // 十分なエネ → 埋めない(手札を吐いて詰める)【energy>=4 stop 維持】
   const cnt={};p.hand.forEach(x=>cnt[x]=(cnt[x]||0)+1);
   const SOUL=30;                                                // チャレンジャー・ソウル: 手札に抱えるのは2枚まで。3枚目以降はエネへ。
   // 速攻(レイザー/ブラスト)は詰めの切り札で手札1体あれば十分 → 余剰(2体目以降)は埋めてよい。
   let keptHaste=false, keptSoul=0;
   const buriable=sorted.filter(no=>{
+   if(RED_AGGRO_V2){
+    if(isLightAttacker(no))return false;                        // V2: 軽量主砲(1-5)は速攻/重複でも絶対に埋めない(最優先で握る)
+    if(FX[no]&&FX[no].haste){ if(keptHaste)return true; keptHaste=true; return false; } // 速攻(#9等)は1体温存、余りは埋める
+    if(no===SOUL){ if(keptSoul>=2)return true; keptSoul++; return false; }               // ソウルは2枚まで温存、3枚目以降は埋める
+    return true;                                                // 残り(スペル/ベース/重量ユニット/余剰速攻/余剰ソウル)は埋めてよい
+   }
+   // 旧挙動(RED_AGGRO_V2=false): 完全復元
    if(FX[no]&&FX[no].haste){ if(keptHaste)return true; keptHaste=true; return false; } // 速攻は1体だけ温存、余りは埋める
    if(no===SOUL){ if(keptSoul>=2)return true; keptSoul++; return false; }               // ソウルは2枚まで温存、3枚目以降は埋める
    return !isCheapSmasher(no);                                  // 軽量スマッシャーは温存、それ以外(スペル/ベース/余剰速攻/余剰ソウル)は埋める
@@ -2177,6 +2187,18 @@ function aiEnergyChoice(p){
    return pool.sort((a,b)=>(cnt[b]-cnt[a])||(totalCost(b)-totalCost(a)))[0];
   }
   // 手札が全てキープ対象(ユニット＋ソウル2枚以下等)でも、エネは要るので1枚は埋める。
+  if(RED_AGGRO_V2){
+   // 【Issue3】チャレンジャー・ソウル(30)は最後の1枚を極力残す(≥1握る)。
+   //  1-5(軽量主砲)と#30以外に埋められる札があれば、それを先に埋める(非ユニット→1-5以外のユニット)。
+   //  真に「他の全札が1-5(保護対象)」の時だけ、最後の#30をエネへ回す。
+   const forcedNonU2=sorted.filter(no=>CARDS[no].type!=="U"&&no!==SOUL);          // #30以外の非ユニット
+   if(forcedNonU2.length)return forcedNonU2.sort((a,b)=>totalCost(a)-totalCost(b))[0];
+   const forcedU2=sorted.filter(no=>CARDS[no].type==="U"&&!isLightAttacker(no));  // 1-5以外のユニット(速攻#9/重量#38等)
+   if(forcedU2.length)return forcedU2.slice().sort((a,b)=>(CARDS[a].pow+(CARDS[a].sm||0)*1500)-(CARDS[b].pow+(CARDS[b].sm||0)*1500))[0];
+   if(p.hand.filter(no=>no===SOUL).length>=2)return SOUL;                          // #30が2枚以上 → 1枚だけ埋める(≥1残す)
+   if(sorted.includes(SOUL))return SOUL;                                           // 他に埋める札が無い時のみ、最後の#30を埋める
+   return null;                                                                    // 残りは全て1-5 → 原則(絶対に埋めない)に従い、埋めずに見送る
+  }
   // 非ユニット(余ったソウル等)を先に埋める。無ければユニットを埋めるが、
   // ウィニー戦略では軽いスマッシャーが勝ち筋なので、最も重い(大きい)ユニットをエネに回し、軽い駒を手札に残す。
   const forcedNonU=sorted.filter(no=>CARDS[no].type!=="U");
@@ -2208,6 +2230,13 @@ function aiEnergyChoice(p){
  if(bases.length)return bases[0];
  return sorted[0];
 }
+// 【オーナー追答A】総リソース比較(優勢メトリクス)。V2のリザーブ/コミット判断に使う。
+//  adv(pi) = 手札数 + エネ数 + スマッシュゾーン数 + 盤面自軍ユニット数(オーナー式のまま実装)。
+function advMetric(pi){
+ const p=G.pl[pi];
+ return p.hand.length+p.energy.length+p.smash.length+units().filter(u=>u.ctrl===pi).length;
+}
+function isAheadAdv(pi){ return advMetric(pi)>advMetric(other(pi)); }
 function aiSmashChoice(p,cands){
  const pi=p.i,opp=G.pl[other(pi)];
  const good=cands.filter(u=>smVal(u)+(u.r===homeRow(other(pi))?1:0)>0);
@@ -2217,8 +2246,29 @@ function aiSmashChoice(p,cands){
  const oppRoom=7-opp.smash.length;
  // リーサル: 今スマッシュで勝てるなら迷わず殴る
  if(totalAvail>=oppRoom)return good.sort((a,b)=>val(b)-val(a))[0];
- // アグロ: 壁温存せず削り続けて相手の残枠(oppRoom)を詰め、一気詰めの射程に入れる。
- if(deckArchetype(p)==="aggro")return good.sort((a,b)=>val(b)-val(a))[0];
+ // アグロ枝。
+ if(deckArchetype(p)==="aggro"){
+  const sortedG=good.slice().sort((a,b)=>val(b)-val(a));
+  if(!RED_AGGRO_V2)return sortedG[0];                            // 旧: 壁温存せず貪欲に毎回最大で削る
+  // 【設計点5 + オーナー追答A】リザーブ規律 / 優勢メトリクス。
+  //  真リーサル(totalAvail>=oppRoom)は上で処理済み。ここは非リーサル。全チップに適用:
+  //   (i)  スマッシュ後もリザーブが残る=(未凍結の壁が1体以上残る OR 即出せる手札ユニットがある OR #30を握る)、
+  //        または
+  //   (ii) 総リソース比較 adv(=手札+エネ+スマッシュ+盤面ユニット)で相手に勝っている(=優勢)、
+  //  のいずれかなら、単独ユニットの中央SM1刻みを含め自由に押し込む。
+  //  どちらも満たさない(=リザーブ無し かつ 劣勢)なら、最後の1体は壁として温存し刻まない。
+  const wallsAfter=units().filter(u=>u.ctrl===pi&&!u.frozen).length-1; // このスマッシュで1体凍る
+  const playableHandU=p.hand.some(no=>CARDS[no].type==="U"&&canPay(p,parseCost(CARDS[no].play)));
+  const holdSoul=p.hand.includes(30);
+  const reserveOK=wallsAfter>=1||playableHandU||holdSoul;      // (i) 追撃リザーブが残るか
+  const aheadAdv=isAheadAdv(pi);                               // (ii) adv優勢か
+  const oppThreat2=units().some(u=>u.ctrl!==pi&&(u.r===2||u.r===homeRow(pi))&&(u.d.sm||0)>=1); // 壁にする相手の脅威が実在するか
+  const _commit=reserveOK||aheadAdv||!oppThreat2;
+  // 検証用フック(通常/本番はglobalThis.__ADV_TRACE未定義=完全に無効。挙動には一切影響しない)。
+  if(typeof globalThis!=="undefined"&&globalThis.__ADV_TRACE){try{globalThis.__ADV_TRACE.push({turnNo:G.turnNo,pi,lone:wallsAfter<=0,reserveOK,aheadAdv,oppThreat2,commit:_commit,advMe:advMetric(pi),advOpp:advMetric(other(pi))});}catch(_e){}}
+  if(_commit)return sortedG[0];                                // 相手に脅威が無ければ壁は無意味 → 自由に刻む / adv優勢/リザーブありでも刻む
+  return null;                                                  // リザーブ無し かつ 劣勢 かつ 相手に脅威あり → 最後の1体を壁として温存(刻まない)
+ }
  const incoming=maxSmashAgainst(pi);
  const myClock=oppRoom/Math.max(0.5,totalAvail), oppClock=(7-p.smash.length)/Math.max(0.5,incoming);
  const oppThreat=incoming>0;
@@ -2322,7 +2372,7 @@ function aggroReachThisTurn(pi){
   const sm=smVal(u);
   if(u.r===enemyRow){chunks.push({sm:sm+1,cost:0});continue;}
   if(!u.d.move){if(u.r===2)chunks.push({sm,cost:0});continue;}
-  const mv=parseCost(u.d.move).total||1, dC=Math.abs(u.r-2), dE=Math.abs(u.r-enemyRow);
+  const mv=(RED_AGGRO_V2?moveCostOf(u).total:parseCost(u.d.move).total)||1, dC=Math.abs(u.r-2), dE=Math.abs(u.r-enemyRow); // 【設計点6】基地の移動割引/課税を反映
   if(u.r===2)chunks.push({sm,cost:0,up:{sm:1,cost:mv}});
   else chunks.push({sm,cost:mv*dC,up:{sm:1,cost:mv*(dE-dC)}});
  }
@@ -2445,18 +2495,76 @@ function aggroPolicy(pi,acts,timing){
  const enemyRow=homeRow(other(pi));
  const lethalTurn=opp.smash.length+aggroReachThisTurn(pi)>=7;        // 今ターン詰め切れる見込み
  const canCharge=!oppCanRespond(pi);                                 // 相手が迎撃不能=パンプで確実に勝てるブロッカーに特攻してよい
- // 速攻(必ず殴る)は常に、それ以外のスマッシャーは「詰めターン」に、前進させて殴りに行く。
- for(const u of units().filter(u=>u.ctrl===pi&&!u.frozen&&(u.d.sm||0)>=1&&u.r!==enemyRow&&((FX[u.no]&&FX[u.no].haste)||lethalTurn))){
-  const mv=acts.find(a=>a.t==="move"&&a.uid===u.uid);
-  if(!mv)continue;
-  const closer=([r,c])=>Math.abs(r-enemyRow)<Math.abs(u.r-enemyRow);
-  const fwd=mv.dests.filter(d=>closer(d)&&!uAt(d[0],d[1])); // 敵陣に近づく空きマス
-  if(fwd.length){mv.to=fwd.sort((a,b)=>Math.abs(a[0]-enemyRow)-Math.abs(b[0]-enemyRow))[0];return mv;}
-  // 空きが無い: 相手が迎撃不能 & 握ったパンプ(チャレンジャー等)で確実に討てる敵ブロッカーがいるなら、そこへ特攻(バトル→バトル中にパンプで勝ち、そのマスで殴る)。
-  if(canCharge){
-   const pump=aggroMaxPump(p);
-   const fwdBeat=mv.dests.filter(d=>{if(!closer(d))return false;const o=uAt(d[0],d[1]);return o&&o.ctrl!==pi&&effPow(u)+pump>effPow(o);});
-   if(fwdBeat.length){mv.to=fwdBeat.sort((a,b)=>Math.abs(a[0]-enemyRow)-Math.abs(b[0]-enemyRow))[0];return mv;}
+ // 速攻(必ず殴る)は常に、それ以外のスマッシャーは前進させて殴りに行く。
+ if(RED_AGGRO_V2){
+  // 【設計点4】released 非速攻 SM>=1 も、リーサル前から中央(row2)へ前進してSM1圧を毎ターンかける(lethalTurn限定を撤廃)。
+  //  速攻/リーサルターンは敵陣(SM+1)まで。チャレンジャー・ソウル(30)を握る時は敵陣まで積極的に踏む。
+  //  エネ余裕があり倒せる敵ブロッカーが進路/敵陣にいれば踏んで割る。既に敵陣のユニットはそのまま殴る(戻さない=このターン殴るため)。
+  const holdSoul=p.hand.includes(30)&&canPay(p,parseCost(CARDS[30].play));
+  const pump=aggroMaxPump(p);
+  // 【オーナー追答B】敵陣にいるユニットの「戻る/留まる」判断(踏み込んだ後の位置決め):
+  //  ・#30(ソウル)を握るなら敵陣に留まる(奥で+4000勝負=下の前進ループがholdSoulで敵陣狙いを継続)。
+  //  ・そうでなく、中央に戻れば追撃ユニット(手札/プランのユニット)を並べて盤面を作れる(=board-buildingの余地)なら、
+  //    敵陣に留めて孤立させるより、中央へ戻して追加展開を優先する。
+  //  ・どちらでもなければ現状維持(敵陣でSM+1を今ターン刻む=下でmoveせずそのままスマッシュ)。
+  // 敵軍エリアで強くなる(=毎ターン回復する深部クロック: マキリ3/タンネピコロ11/ホリプパ19)は戻さず留める。
+  const statAt=(no,r)=>{try{return (FX[no]&&FX[no].statSelf)?(FX[no].statSelf({r,ctrl:pi})||0):0;}catch(e){return 0;}};
+  const deepAnchor=no=>statAt(no,enemyRow)>statAt(no,2);
+  if(!holdSoul&&!lethalTurn){ // リーサルターンは1点でも惜しいので戻さない(敵陣SM+1で詰める)
+   const hasFollowup=p.hand.some(no=>CARDS[no].type==="U"&&!(FX[no]&&FX[no].eotGrave))
+                   ||(p.planUp&&p.deck.length&&CARDS[p.deck[p.deck.length-1]]&&CARDS[p.deck[p.deck.length-1]].type==="U");
+   if(hasFollowup){
+    for(const u of units().filter(u=>u.ctrl===pi&&!u.frozen&&(u.d.sm||0)>=1&&u.r===enemyRow&&u.d.move&&!deepAnchor(u.no))){
+     const mv=acts.find(a=>a.t==="move"&&a.uid===u.uid);
+     if(!mv)continue;
+     const curC=Math.abs(u.r-2);
+     const back=mv.dests.filter(d=>Math.abs(d[0]-2)<curC&&!uAt(d[0],d[1])); // 中央に近づく空きマス
+     if(back.length){
+      mv.to=back.sort((a,b)=>Math.abs(a[0]-2)-Math.abs(b[0]-2))[0];
+      log(`${p.name}: ${u.d.name} を敵陣から中央へ戻す(追撃展開のため)`,"sys");
+      return mv;
+     }
+    }
+   }
+  }
+  for(const u of units().filter(u=>u.ctrl===pi&&!u.frozen&&(u.d.sm||0)>=1&&u.r!==enemyRow)){
+   const mv=acts.find(a=>a.t==="move"&&a.uid===u.uid);
+   if(!mv)continue;
+   const finisher=(FX[u.no]&&FX[u.no].haste)||lethalTurn;
+   const goEnemy=finisher||holdSoul;                                   // 敵陣狙い(詰め or ソウル持ち)。それ以外は中央止まりでSM1圧。
+   const target=goEnemy?enemyRow:2;
+   const distT=([r,c])=>Math.abs(r-target);
+   const curT=Math.abs(u.r-target);
+   const fwd=mv.dests.filter(d=>distT(d)<curT&&!uAt(d[0],d[1]));        // targetに近づく空きマス
+   if(fwd.length){mv.to=fwd.sort((a,b)=>distT(a)-distT(b))[0];return mv;}
+   // 進路が敵ブロッカーで塞がれている: 倒せる & (ソウル持ち/相手迎撃不能 or エネ余裕) なら踏んで割る。
+   const spare=relEnergy(p).length+relSmash(p).length;
+   const mvc=moveCostOf(u).total||1;
+   const canStep=goEnemy?(canCharge||holdSoul):(spare>=mvc+1);
+   if(canStep){
+    const beat=mv.dests.filter(d=>{if(distT(d)>=curT)return false;const o=uAt(d[0],d[1]);return o&&o.ctrl!==pi&&effPow(u)+pump>effPow(o);});
+    if(beat.length){mv.to=beat.sort((a,b)=>distT(a)-distT(b))[0];return mv;}
+   }
+   // 中央到達済み(非詰め): エネ余裕があり敵陣に倒せるブロッカーがいれば、踏み込んで割る(割った先で今ターン殴る)。
+   if(u.r===2&&!goEnemy&&spare>=mvc+1){
+    const beatDeep=mv.dests.filter(d=>{if(Math.abs(d[0]-enemyRow)>=Math.abs(u.r-enemyRow))return false;const o=uAt(d[0],d[1]);return o&&o.ctrl!==pi&&effPow(u)+pump>effPow(o);});
+    if(beatDeep.length){mv.to=beatDeep[0];return mv;}
+   }
+  }
+ } else {
+  // 旧挙動(RED_AGGRO_V2=false): 速攻 or リーサルターンのみ敵陣へ前進(完全復元)。
+  for(const u of units().filter(u=>u.ctrl===pi&&!u.frozen&&(u.d.sm||0)>=1&&u.r!==enemyRow&&((FX[u.no]&&FX[u.no].haste)||lethalTurn))){
+   const mv=acts.find(a=>a.t==="move"&&a.uid===u.uid);
+   if(!mv)continue;
+   const closer=([r,c])=>Math.abs(r-enemyRow)<Math.abs(u.r-enemyRow);
+   const fwd=mv.dests.filter(d=>closer(d)&&!uAt(d[0],d[1])); // 敵陣に近づく空きマス
+   if(fwd.length){mv.to=fwd.sort((a,b)=>Math.abs(a[0]-enemyRow)-Math.abs(b[0]-enemyRow))[0];return mv;}
+   // 空きが無い: 相手が迎撃不能 & 握ったパンプ(チャレンジャー等)で確実に討てる敵ブロッカーがいるなら、そこへ特攻。
+   if(canCharge){
+    const pump=aggroMaxPump(p);
+    const fwdBeat=mv.dests.filter(d=>{if(!closer(d))return false;const o=uAt(d[0],d[1]);return o&&o.ctrl!==pi&&effPow(u)+pump>effPow(o);});
+    if(fwdBeat.length){mv.to=fwdBeat.sort((a,b)=>Math.abs(a[0]-enemyRow)-Math.abs(b[0]-enemyRow))[0];return mv;}
+   }
   }
  }
  // (a) 速攻(レイザー等)を出すのは「そのターンに勝ち切れる」時だけ。ターン終了で消えるので、勝てないなら出す意味が無い。
@@ -2480,17 +2588,30 @@ function aggroPolicy(pi,acts,timing){
   }
   // 勝てない/殴りに行けないなら速攻(レイザー)は温存(出さない)
  }
- // (b) それ以外の手札ユニットは出さない。プランもしない(瀕死時のみ)。移動/詰め札を評価で最善手。
+ // 【設計点3】プランゾーンが表で、エネが1でも残れば(=そのplayUが生成されている)プランのユニットを出す。掘った分を無駄にしない。
+ //  ※手札からのユニット展開は自ターンには行わない(原則維持)。プランからの展開のみ許可(opp.smash>=6ゲートを緩和)。
+ if(RED_AGGRO_V2){
+  const planU=acts.find(a=>a.t==="playU"&&a.plan);
+  if(planU){ planU.sq=aggroPlace(pi,planU); return planU; }
+ }
+ // (b) それ以外の手札ユニットは出さない。プラン作成/更新は瀕死時のみ。移動/詰め札を評価で最善手。
  let pool=acts.filter(a=>a.t!=="playU");
  if(opp.smash.length<6)pool=pool.filter(a=>a.t!=="planMake"&&a.t!=="planUpdate");
  const best=scoreBest(pool.length?pool:[pass]);
  // 負け際(次の相手ターンに詰まされる見込み)で自分のターンにやることが無い(パス)なら、手を無駄にせず
  // 手札からユニットを出して壁/攻め手にする(何もせずターンを終えない)。
  if(best.t==="pass"&&(p.smash.length+maxSmashAgainst(pi)>=7)){
-  const dep=aggroPickDeploy(pi,acts);
-  if(dep)return dep;
-  const anyU=acts.filter(a=>a.t==="playU"&&!(FX[a.no]&&FX[a.no].eotGrave)); // 最後の手段: 出せるユニットを何でも壁に
-  if(anyU.length){anyU.sort((a,b)=>totalCost(a.no)-totalCost(b.no));const a=anyU[0];a.sq=aggroPlace(pi,a);return a;}
+  if(RED_AGGRO_V2){
+   // 【Issue1】自ターンは手札からユニットを出さない(原則)。壁フォールバックでも、
+   //  許可するのは「速攻(=上のリーサル判定で処理済み)」と「プランゾーンのユニット」のみ。手札ユニットは出さない。
+   const planDep=acts.find(a=>a.t==="playU"&&a.plan);
+   if(planDep){ planDep.sq=aggroPlace(pi,planDep); return planDep; }
+  } else {
+   const dep=aggroPickDeploy(pi,acts);
+   if(dep)return dep;
+   const anyU=acts.filter(a=>a.t==="playU"&&!(FX[a.no]&&FX[a.no].eotGrave)); // 最後の手段: 出せるユニットを何でも壁に
+   if(anyU.length){anyU.sort((a,b)=>totalCost(a.no)-totalCost(b.no));const a=anyU[0];a.sq=aggroPlace(pi,a);return a;}
+  }
  }
  return best;
 }
@@ -2498,6 +2619,11 @@ function aggroPickDeploy(pi,acts){
  const p=G.pl[pi];
  const unitPlays=acts.filter(a=>a.t==="playU");
  if(!unitPlays.length)return null;
+ // 【設計点2】相手ターンに手札から展開するが、盤面が薄い間だけ2〜3体まで。以降は手札にリザーブを残す(全部吐かない)。
+ if(RED_AGGRO_V2){
+  const myBodies=units().filter(u=>u.ctrl===pi).length;
+  if(myBodies>=3)return null;                                            // 既に3体展開済み → これ以上は展開せず温存
+ }
  const idaCount=p.hand.filter(x=>x===1).length;                          // 手札の韋駄天丸枚数
  const idaOnBoard=units().some(u=>u.ctrl===pi&&u.no===1);                // 盤面に韋駄天丸がいるか
  const dispTurn=Math.floor(G.turnNo/2)+1;                                // 表示上のターン数
@@ -6261,6 +6387,10 @@ function evUnderPressure(pi){
 async function evChoose(pi,acts,timing){
  const nonPass=acts.filter(a=>a.t!=="pass");
  if(EV_SIM || timing!=="main" || G.ap!==pi || nonPass.length===0) return aiDecide(pi,acts,timing);
+ // 【RED_AGGRO_V2】アグロ席は自ターンも人間流ポリシー(aggroPolicy)で決める。
+ //  既定のevChooseはミラー等 useClone=true(相手もアグロ)の局面で自ターンをクローン評価に回し、
+ //  aggroPolicyの前進/中央圧/プラン展開/リザーブ規律をバイパスしてしまう。V2ではアグロ席を必ずaggroPolicyへ接続する。
+ if(RED_AGGRO_V2){ try{ if(deckArchetype(G.pl[pi])==="aggro") return aiDecide(pi,acts,timing); }catch(e){} }
  // ---- v7: 冥界の通廊(68)は「相手の脅威ライン(同じ列)に時機を見て張る」----
  //  無条件即張り(v6)を廃止。相手のスマッシュ脅威が中央/前進で出現・接近している空き列(=脅威列)へ68を張る手を最優先。
  //  脅威列に張れば、その列で相手アタッカーがバトルに勝っても終了時に墓地(killTarget(winner))=チャンプで確実処理=迎撃が楽。
@@ -6410,6 +6540,12 @@ function ev8SafeShabonCount(pi){
 //   aiScore は 非クローン経路(_origChooseActionImpl_EV3→aiDecide→argmax aiScore)でも クローン経路(初期ランク)でも共有される
 //   ため、この減点は全ライブ決定に効く(=always-on)。EV_SIM(クローン先読み)中は evBoardValue が別途生存を見るので二重掛けを避ける。
 //   判定は状態クローンの重い先読み無し=oppCeiling概算(maxSmashAgainst)と自分の残余エネ/迎撃札/壁だけで決定的に計算する。
+// ===== 赤単アグロ人間流ポリシー(RED_AGGRO_V2) =====
+// オーナー直伝の赤単原則(human-games/赤単-人間の考慮メモ.md / ai-design-red-aggro.md)を実装する
+// 単一トグル。true=新挙動(既定)、false=旧挙動(A/B比較用に完全復元)。
+// 実行時に env RED_AGGRO_V2=0/false で無効化可(ブラウザでは常に既定値true)。
+var RED_AGGRO_V2=(typeof process!=="undefined"&&process.env&&process.env.RED_AGGRO_V2!=null)
+  ? !(process.env.RED_AGGRO_V2==="0"||process.env.RED_AGGRO_V2==="false") : true;
 var EV9=(typeof EV9!=="undefined"&&EV9)?EV9:{
   reserve:1,   // 1=always-on リザーブ減点ON(v9既定)。0で v8 相当(減点なし)=ブラウザで前後比較用に実行時トグル可
   reserveMin:2,// 相手に脅威がある時、迎撃用に自メイン終了まで残したい最低エネ(既定2=一手の迎撃サモン/門を構えられる量)
@@ -6762,7 +6898,7 @@ EVALAI.on=true;
  function addBadge(){ try{
    if(document.getElementById("aiTestBadge")) return;
    const b=document.createElement("div"); b.id="aiTestBadge";
-   b.textContent="実験AIビルド: 新AI v11";
+   b.textContent="実験AIビルド: 新AI v12 (赤単リワーク)";
    b.style.cssText="position:fixed;left:6px;bottom:6px;z-index:99999;background:#7a1030;color:#ffd7e2;font:11px/1.4 sans-serif;padding:3px 8px;border:1px solid #ff6b95;border-radius:6px;opacity:.85;pointer-events:none";
    (document.body||document.documentElement).appendChild(b);
  }catch(e){} }
