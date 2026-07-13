@@ -311,7 +311,7 @@ catch(e){ console.error("Firebase init 失敗:",e); }
 
 <script>
 "use strict";
-const GAME_VERSION="P3.19 AI-TEST (新AI v17 (赤単・エネ発展)) — 実験ビルド";
+const GAME_VERSION="P3.19 AI-TEST (新AI v18 (赤単・スタック認識)) — 実験ビルド";
 const KIFU_FMT=2; // 棋譜の記録フォーマット版(記録項目を増やしたら上げる。読込時に不一致なら警告)
 /* ============ カードデータ ============ */
 const CARDS={};
@@ -1533,6 +1533,10 @@ async function runGame(){
  while(!G.over){
   const p=G.pl[G.ap];
   p.aiFlags.moved=0;
+  if(RED_AGGRO_V2){            // 【Fix3】OFF は一切触らない(byte-identical維持)
+   p.aiFlags.visited={};       // uid→今ターンに占有した「r,c」集合(往復ループ防止)
+   p.aiFlags.retCenter={};     // uid→今ターン既に「中央へ戻す」を1回発火したか
+  }
   G.phase="リリース";
   units().forEach(u=>{if(u.ctrl===G.ap)u.frozen=false;});
   p.energy.forEach(e=>e.frozen=false);p.smash.forEach(s=>s.frozen=false);
@@ -2683,6 +2687,16 @@ function aggroPlanEngine(pi,acts){
 function aggroPolicy(pi,acts,timing){
  const p=G.pl[pi], opp=G.pl[other(pi)], myTurn=G.ap===pi;
  const pass=acts.find(a=>a.t==="pass")||{t:"pass"};
+ // 【RED_AGGRO_V2 / Fix3】往復ループ防止: uid→今ターンに占有した「r,c」集合。移動を返す度に発着マスを記録し、
+ //  以後そのユニットは既踏マスへは戻さない(=中央↔自軍/敵陣↔中央のバウンスを完全に断つ)。全経路(前進/戻し/scoreBest)で共用。
+ const vis=RED_AGGRO_V2?(p.aiFlags.visited||(p.aiFlags.visited={})):null;
+ const rc=RED_AGGRO_V2?(p.aiFlags.retCenter||(p.aiFlags.retCenter={})):null;
+ const vset=uid=>vis[uid]||(vis[uid]=new Set());
+ const fresh=(uid,d)=>!(vis&&vset(uid).has(d[0]+","+d[1]));      // まだ今ターン踏んでいないマスか
+ const oneShot=u=>(FX[u.no]&&(FX[u.no].eotGrave||FX[u.no].haste)); // 使い捨て/速攻=必ず今ターン殴る(戻さない)
+ const isRevisit=a=>RED_AGGRO_V2&&a&&a.t==="move"&&a.to&&vis&&vset(a.uid).has(a.to[0]+","+a.to[1]);
+ const remember=a=>{ if(vis&&a&&a.t==="move"&&a.to){ const u=units().find(x=>x.uid===a.uid); const s=vset(a.uid); if(u)s.add(u.r+","+u.c); s.add(a.to[0]+","+a.to[1]); } return a; };
+ const retMove=(u,mv,to)=>{ mv.to=to; return remember(mv); };
  // 【負けチャンプ禁止】aiScore が解決した移動先(a.to)が敵ユニットのマスで、実際に払えるパンプを足しても守備側 effPow 未満
  //  (=自軍だけ死ぬ負けチャンプ。脅威へのチャンプブロックも自軍が消えるだけで脅威は残る)なら、その手は採用しない。
  //  相打ち(==)・勝ちは許容。移動先が敵陣でも「勝てない踏み込み」はスマッシュできず死ぬだけなのでリーサル例外も設けない。
@@ -2694,9 +2708,9 @@ function aggroPolicy(pi,acts,timing){
   const atk=effPow(mv)+((FX[mv.no]&&FX[mv.no].onAttack)||0);   // 攻撃時パンプ込みの実効攻撃力
   return atk+pmp<effPow(o);
  };
- const scoreBest=(list)=>{let b=pass,bs=-1e9;for(const a of list){const s=aiScore(pi,a,timing);if(isLosingChump(a))continue;if(s>bs){bs=s;b=a;}}return b;};
+ const scoreBest=(list)=>{let b=pass,bs=-1e9;for(const a of list){const s=aiScore(pi,a,timing);if(isLosingChump(a))continue;if(isRevisit(a))continue;if(s>bs){bs=s;b=a;}}return b;};
  // バトル中/メイン以外はコンバットトリック等の通常評価に委譲
- if(timing!=="main"||G.battles.length)return scoreBest(acts);
+ if(timing!=="main"||G.battles.length)return remember(scoreBest(acts));
  if(!myTurn){
   // 相手のメインフェイズ: 手札から通常(凍結)ユニットを展開(決め打ち)。速攻/ターン終了消滅は自分のターンに回す。
   return aggroPickDeploy(pi,acts)||pass;
@@ -2726,20 +2740,22 @@ function aggroPolicy(pi,acts,timing){
   // 敵軍エリアで強くなる(=毎ターン回復する深部クロック: マキリ3/タンネピコロ11/ホリプパ19)は戻さず留める。
   const statAt=(no,r)=>{try{return (FX[no]&&FX[no].statSelf)?(FX[no].statSelf({r,ctrl:pi})||0):0;}catch(e){return 0;}};
   const deepAnchor=no=>statAt(no,enemyRow)>statAt(no,2);
+  // (往復ループ防止の vis/rc/vset/fresh/oneShot/retMove は関数冒頭で定義済み=全経路で共用)
   if(!holdSoul&&!lethalTurn){ // リーサルターンは1点でも惜しいので戻さない(敵陣SM+1で詰める)
    const hasFollowup=p.hand.some(no=>CARDS[no].type==="U"&&!(FX[no]&&FX[no].eotGrave))
                    ||(p.planUp&&p.deck.length&&CARDS[p.deck[p.deck.length-1]]&&CARDS[p.deck[p.deck.length-1]].type==="U");
    if(hasFollowup){
-    for(const u of units().filter(u=>u.ctrl===pi&&!u.frozen&&(u.d.sm||0)>=1&&u.r===enemyRow&&u.d.move&&!deepAnchor(u.no))){
+    // 【Fix3】使い捨て/速攻(レイザー等)は戻さない=今ターン必ずスマッシュ。中央戻しは1ユニット1回のみ。
+    for(const u of units().filter(u=>u.ctrl===pi&&!u.frozen&&(u.d.sm||0)>=1&&u.r===enemyRow&&u.d.move&&!deepAnchor(u.no)&&!oneShot(u)&&!rc[u.uid])){
      if(plannedSac&&u===plannedSac)continue; // #31で廃棄予定のユニットは動かさない
      const mv=acts.find(a=>a.t==="move"&&a.uid===u.uid);
      if(!mv)continue;
      const curC=Math.abs(u.r-2);
-     const back=mv.dests.filter(d=>Math.abs(d[0]-2)<curC&&!uAt(d[0],d[1])); // 中央に近づく空きマス
+     const back=mv.dests.filter(d=>Math.abs(d[0]-2)<curC&&!uAt(d[0],d[1])&&fresh(u.uid,d)); // 中央に近づく未踏の空きマス
      if(back.length){
-      mv.to=back.sort((a,b)=>Math.abs(a[0]-2)-Math.abs(b[0]-2))[0];
+      rc[u.uid]=1; // このユニットの「中央戻し」は今ターンこれ限り(往復禁止)
       log(`${p.name}: ${u.d.name} を敵陣から中央へ戻す(追撃展開のため)`,"sys");
-      return mv;
+      return retMove(u,mv,back.sort((a,b)=>Math.abs(a[0]-2)-Math.abs(b[0]-2))[0]);
      }
     }
    }
@@ -2753,8 +2769,8 @@ function aggroPolicy(pi,acts,timing){
    const target=goEnemy?enemyRow:2;
    const distT=([r,c])=>Math.abs(r-target);
    const curT=Math.abs(u.r-target);
-   const fwd=mv.dests.filter(d=>distT(d)<curT&&!uAt(d[0],d[1]));        // targetに近づく空きマス
-   if(fwd.length){mv.to=fwd.sort((a,b)=>distT(a)-distT(b))[0];return mv;}
+   const fwd=mv.dests.filter(d=>distT(d)<curT&&!uAt(d[0],d[1])&&fresh(u.uid,d)); // targetに近づく未踏の空きマス
+   if(fwd.length){return retMove(u,mv,fwd.sort((a,b)=>distT(a)-distT(b))[0]);}
    // 進路が敵ブロッカーで塞がれている: 倒せる & (ソウル持ち/相手迎撃不能 or エネ余裕) なら踏んで割る。
    const spare=relEnergy(p).length+relSmash(p).length;
    const mvc=moveCostOf(u).total||1;
@@ -2762,13 +2778,13 @@ function aggroPolicy(pi,acts,timing){
    // 踏み込みで実際に払えるパンプ(移動を実際に払った後の残エネ・色まで考慮)だけを勝敗計算に入れる=負けチャンプ防止。
    const stepPump=aggroPumpAfterMove(p,u);
    if(canStep){
-    const beat=mv.dests.filter(d=>{if(distT(d)>=curT)return false;const o=uAt(d[0],d[1]);return o&&o.ctrl!==pi&&effPow(u)+stepPump>effPow(o);});
-    if(beat.length){mv.to=beat.sort((a,b)=>distT(a)-distT(b))[0];return mv;}
+    const beat=mv.dests.filter(d=>{if(distT(d)>=curT||!fresh(u.uid,d))return false;const o=uAt(d[0],d[1]);return o&&o.ctrl!==pi&&effPow(u)+stepPump>effPow(o);});
+    if(beat.length){return retMove(u,mv,beat.sort((a,b)=>distT(a)-distT(b))[0]);}
    }
    // 中央到達済み(非詰め): エネ余裕があり敵陣に倒せるブロッカーがいれば、踏み込んで割る(割った先で今ターン殴る)。
    if(u.r===2&&!goEnemy&&spare>=mvc+1){
-    const beatDeep=mv.dests.filter(d=>{if(Math.abs(d[0]-enemyRow)>=Math.abs(u.r-enemyRow))return false;const o=uAt(d[0],d[1]);return o&&o.ctrl!==pi&&effPow(u)+stepPump>effPow(o);});
-    if(beatDeep.length){mv.to=beatDeep[0];return mv;}
+    const beatDeep=mv.dests.filter(d=>{if(Math.abs(d[0]-enemyRow)>=Math.abs(u.r-enemyRow)||!fresh(u.uid,d))return false;const o=uAt(d[0],d[1]);return o&&o.ctrl!==pi&&effPow(u)+stepPump>effPow(o);});
+    if(beatDeep.length){return retMove(u,mv,beatDeep[0]);}
    }
   }
  } else {
@@ -2853,7 +2869,7 @@ function aggroPolicy(pi,acts,timing){
   const eng=aggroPlanEngine(pi,acts);
   if(eng)return eng;
  }
- return best;
+ return remember(best);
 }
 function aggroPickDeploy(pi,acts){
  const p=G.pl[pi];
@@ -2920,6 +2936,40 @@ function aggroPlace(pi,a){
 // エネを残したい。need=その最小コスト, val=構えておく価値。タップアウト抑止に使う。
 // コンバットトリック(バトルでのみ価値: パンプ/加速付与/回避/防御)。メインでの無駄打ち抑止＆エネ残し判定で共用。
 const COMBAT_TRICKS=new Set([30,32,72,112,152,155,190,192,189,110,149,153,158]);
+// 【RED_AGGRO_V2】バトル用パワーパンプの付与量(effPow加算)と色制限。#30 チャレンジャー・ソウル=+4000 等。
+const BATTLE_PUMP_AMT={30:4000,32:3000,72:3000,112:3000,152:3000,155:2000,190:2000,192:3000};
+const BATTLE_PUMP_COL={32:"赤",72:"黒",112:"青",152:"白",190:"緑",192:"緑"};
+// 【RED_AGGRO_V2 / Fix1】スタック上の未解決パンプ(このユニットを対象にした buff スペル)を数える。
+//  「スタックに置いた効果は解決前でも見込む」= 二重パンプ防止。{sum:合計付与量, cnt:枚数}
+function pendingPumpOn(u){
+ let sum=0,cnt=0;
+ if(!u)return {sum,cnt};
+ for(const st of (G.stacks||[]))for(const it of st){
+  if(!it||it.kind!=="spell")continue;
+  const amt=BATTLE_PUMP_AMT[it.no];if(!amt)continue;
+  if(it.tgts&&it.tgts.some(t=>t&&t.u&&(t.u===u||t.u.uid===u.uid))){sum+=amt;cnt++;}
+ }
+ return {sum,cnt};
+}
+// 【RED_AGGRO_V2 / Fix1+Fix2】バトル中に自軍 mine へパワーパンプ amt を追加でプレイする価値。
+//  Fix1(スタック認識): 既に置いたパンプ(pending)が解決すれば守備側 effPow に到達/超過するなら重ねない(強く負)。
+//  Fix2(リソース評価): パンプ=−1カード。純交換 net = 敵除去(+1) + 自軍救出(パンプ無しでは死ぬ時+1) − 使用パンプ総枚数。
+//   net>0 のみ撃つ(得な交換 or 生存/リーサル必須)。中立/損は撃たず手札を温存(パス→スタック解決)。
+function battlePumpScoreV2(pi,mine,theirs,amt){
+ if(!mine||!theirs)return -3;
+ const dPow=effPow(theirs);
+ const pend=pendingPumpOn(mine);
+ const effStack=effPow(mine)+pend.sum;           // スタック解決後(このカードを置く前)の自パワー
+ if(effStack>=dPow)return -5;                     // Fix1: 既に置いた分で勝つ/相打てる → 重ねない
+ const effAfter=effStack+amt;                     // このパンプを置いた後
+ if(effAfter<dPow)return -1;                      // 届かない=無駄打ち → 撃たない
+ const totalPumps=pend.cnt+1;                     // 既存スタック分 + このカード
+ const wins=effAfter>dPow;                        // > なら自軍生存(== は相打ち)
+ const losing=effPow(mine)<=dPow;                 // このカード無しでは負ける(自軍が死ぬ)= 救出価値
+ const net=(1)+((wins&&losing)?1:0)-totalPumps;   // 敵除去 + 自軍救出 − パンプ枚数
+ if(net>0)return 3.0+Math.min(net,3);
+ return net===0?0.15:-3;                          // 中立は温存寄り、損は撃たない
+}
 // 手札から中央特攻して即「相手のリソースを削る」死亡誘発ユニット = 本体を犠牲にテンポを取る価値がある。
 //  168 クレーター・メーカー(相手エネ破壊) / 49 スパイク・ガールズ・54 ディーペスト・パープル(相手ハンデス)。
 // ドロー/自己再利用系(93 ファルコン・ケン等)はここに含めない = 本体を捨ててまで先に自殺せず、
@@ -3253,6 +3303,9 @@ function aiScore(pi,a,timing){
     }
     const amt=DMGAMT[a.no];if(theirs.dmg+amt>=effPow(theirs))return a.no===31?4:5;return losing?2:0.3;
    }
+   // 【RED_AGGRO_V2 / Fix1+Fix2】バトル用パワーパンプ(#30/#32/#72 等)はスタック認識+リソース評価で判定。
+   if(RED_AGGRO_V2&&BATTLE_PUMP_AMT[a.no]&&mine&&theirs&&(!BATTLE_PUMP_COL[a.no]||mine.d.col===BATTLE_PUMP_COL[a.no]))
+    return battlePumpScoreV2(pi,mine,theirs,BATTLE_PUMP_AMT[a.no]);
    if((a.no===32&&mine.d.col==="赤")||(a.no===72&&mine.d.col==="黒")||a.no===30)return losing?4.5:0.3;
    if(a.no===36)return (mine&&theirs&&effPow(mine)>effPow(theirs))?2.2:0.1;
    if(a.no===70)return (theirs&&theirs.dmg+effPow(mine)<effPow(theirs))?4.3:0.3;
@@ -7158,7 +7211,12 @@ EVALAI.on=true;
    relEnergy:function(p){return relEnergy(p);}, relSmash:function(p){return relSmash(p);},
    evReactiveCards:function(p){return evReactiveCards(p);},
    EVALAI:EVALAI, resetLeak:function(){ if(typeof ev6LeakReset==="function") ev6LeakReset(); }, getLeak:function(){return EV6LEAK;},
-   FX:(typeof FX!=="undefined"?FX:null), CARDS:(typeof CARDS!=="undefined"?CARDS:null), units:function(){return units();}
+   FX:(typeof FX!=="undefined"?FX:null), CARDS:(typeof CARDS!=="undefined"?CARDS:null), units:function(){return units();},
+   // 検証用(読み取り専用・挙動不変): バトルパンプのスタック認識/リソース評価を直接測る。
+   aiScore:function(pi,a,timing){return aiScore(pi,a,timing);},
+   pendingPumpOn:function(u){return pendingPumpOn(u);},
+   battlePumpScoreV2:function(pi,mine,theirs,amt){return battlePumpScoreV2(pi,mine,theirs,amt);},
+   effPow:function(u){return effPow(u);}, key:function(r,c){return key(r,c);}, uAt:function(r,c){return uAt(r,c);}
  };
  // メイン終了(=直後に相手ターン)の迎撃余力を記録する。smashPhase(p) の入口=priorityRound("main") 直後=全プレイ完了後の残余状態。
  if(typeof smashPhase!=="undefined"){
@@ -7182,7 +7240,7 @@ EVALAI.on=true;
  function addBadge(){ try{
    if(document.getElementById("aiTestBadge")) return;
    const b=document.createElement("div"); b.id="aiTestBadge";
-   b.textContent="実験AIビルド: 新AI v17 (赤単・エネ発展)";
+   b.textContent="実験AIビルド: 新AI v18 (赤単・スタック認識)";
    b.style.cssText="position:fixed;left:6px;bottom:6px;z-index:99999;background:#7a1030;color:#ffd7e2;font:11px/1.4 sans-serif;padding:3px 8px;border:1px solid #ff6b95;border-radius:6px;opacity:.85;pointer-events:none";
    (document.body||document.documentElement).appendChild(b);
  }catch(e){} }
