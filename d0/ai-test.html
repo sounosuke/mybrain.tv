@@ -311,7 +311,7 @@ catch(e){ console.error("Firebase init 失敗:",e); }
 
 <script>
 "use strict";
-const GAME_VERSION="P3.19 AI-TEST (新AI v12 (赤単リワーク)) — 実験ビルド";
+const GAME_VERSION="P3.19 AI-TEST (新AI v13 (赤単・資源評価)) — 実験ビルド";
 const KIFU_FMT=2; // 棋譜の記録フォーマット版(記録項目を増やしたら上げる。読込時に不一致なら警告)
 /* ============ カードデータ ============ */
 const CARDS={};
@@ -1295,7 +1295,12 @@ async function performAction(pi,act){
    const cands=units().filter(x=>x.ctrl===pi).map(x=>({kind:"unit",u:x,label:x.d.name}));
    if(!cands.length)return false;
    let sel;
-   if(p.isAI)sel=[cands.slice().sort((a,b)=>effPow(a.u)-effPow(b.u))[0]];
+   if(p.isAI){
+    // 【RED_AGGRO_V2】最も価値の低い(=廃棄しても惜しくない)自ユニットを選ぶ:
+    //  終了時消滅(レイザー等)は実質無償→最優先で廃棄。次いで残りHP(effPow-dmg)が最小=既に瀕死のものを優先。
+    if(RED_AGGRO_V2)sel=[cands.slice().sort((a,b)=>extraSacRank(a.u)-extraSacRank(b.u))[0]];
+    else sel=[cands.slice().sort((a,b)=>effPow(a.u)-effPow(b.u))[0]]; // 旧: 単純にパワー最小
+   }
    else sel=await humanPickTargets(pi,cands,1,false,`《${d.name}》の追加コスト: 廃棄する自分のユニット`);
    if(!sel||!sel.length)return false;
    sacU=sel[0].u;
@@ -2166,13 +2171,15 @@ function aiEnergyChoice(p){
   const cnt={};p.hand.forEach(x=>cnt[x]=(cnt[x]||0)+1);
   const SOUL=30;                                                // チャレンジャー・ソウル: 手札に抱えるのは2枚まで。3枚目以降はエネへ。
   // 速攻(レイザー/ブラスト)は詰めの切り札で手札1体あれば十分 → 余剰(2体目以降)は埋めてよい。
-  let keptHaste=false, keptSoul=0;
+  let keptHaste=false, keptSoul=0, kept29=0, kept31=0;
   const buriable=sorted.filter(no=>{
    if(RED_AGGRO_V2){
     if(isLightAttacker(no))return false;                        // V2: 軽量主砲(1-5)は速攻/重複でも絶対に埋めない(最優先で握る)
     if(FX[no]&&FX[no].haste){ if(keptHaste)return true; keptHaste=true; return false; } // 速攻(#9等)は1体温存、余りは埋める
-    if(no===SOUL){ if(keptSoul>=2)return true; keptSoul++; return false; }               // ソウルは2枚まで温存、3枚目以降は埋める
-    return true;                                                // 残り(スペル/ベース/重量ユニット/余剰速攻/余剰ソウル)は埋めてよい
+    if(no===SOUL){ if(keptSoul>=2)return true; keptSoul++; return false; }               // #30(ソウル)は2枚まで温存、3枚目以降は埋める
+    if(no===29){ if(kept29>=1)return true; kept29++; return false; } // 【charge保護】#29(シャイニング・ダーツ)は最低1枚温存
+    if(no===31){ if(kept31>=1)return true; kept31++; return false; } // 【charge保護】#31(トロール砲)は最低1枚温存
+    return true;                                                // 残り(スペル/ベース/重量ユニット/余剰速攻/余剰ソウル/#29・#31の2枚目以降)は埋めてよい
    }
    // 旧挙動(RED_AGGRO_V2=false): 完全復元
    if(FX[no]&&FX[no].haste){ if(keptHaste)return true; keptHaste=true; return false; } // 速攻は1体だけ温存、余りは埋める
@@ -2188,15 +2195,19 @@ function aiEnergyChoice(p){
   }
   // 手札が全てキープ対象(ユニット＋ソウル2枚以下等)でも、エネは要るので1枚は埋める。
   if(RED_AGGRO_V2){
-   // 【Issue3】チャレンジャー・ソウル(30)は最後の1枚を極力残す(≥1握る)。
-   //  1-5(軽量主砲)と#30以外に埋められる札があれば、それを先に埋める(非ユニット→1-5以外のユニット)。
-   //  真に「他の全札が1-5(保護対象)」の時だけ、最後の#30をエネへ回す。
-   const forcedNonU2=sorted.filter(no=>CARDS[no].type!=="U"&&no!==SOUL);          // #30以外の非ユニット
+   // 【charge保護】反応スペル #29(ダーツ)/#31(トロール砲)/#30(ソウル)は各最低1枚を手札に残す。
+   //  まず 1-5(軽量主砲)と反応スペル以外の札を埋める(非ユニット→1-5以外のユニット)。
+   //  真に「他の全札が1-5(保護対象)+反応スペルのみ」の時だけ、反応スペルを優先度順で1枚エネへ回す。
+   const REACT=new Set([29,31,30]);
+   const forcedNonU2=sorted.filter(no=>CARDS[no].type!=="U"&&!REACT.has(no));      // 反応スペル以外の非ユニット
    if(forcedNonU2.length)return forcedNonU2.sort((a,b)=>totalCost(a)-totalCost(b))[0];
    const forcedU2=sorted.filter(no=>CARDS[no].type==="U"&&!isLightAttacker(no));  // 1-5以外のユニット(速攻#9/重量#38等)
    if(forcedU2.length)return forcedU2.slice().sort((a,b)=>(CARDS[a].pow+(CARDS[a].sm||0)*1500)-(CARDS[b].pow+(CARDS[b].sm||0)*1500))[0];
-   if(p.hand.filter(no=>no===SOUL).length>=2)return SOUL;                          // #30が2枚以上 → 1枚だけ埋める(≥1残す)
-   if(sorted.includes(SOUL))return SOUL;                                           // 他に埋める札が無い時のみ、最後の#30を埋める
+   // 反応スペルを埋める順: KEEP優先度は #30 > #31 > #29 なので #29→#31→#30 の順に埋める。
+   //  ただし対アグロ(ウィニー)は #29(ダーツ)を確保するため #31→#30→#29 の順(#29を最後まで残す)。
+   let oppAggro=false; try{ oppAggro=deckArchetype(G.pl[other(p.i)])==="aggro"; }catch(e){}
+   const buryOrder=oppAggro?[31,30,29]:[29,31,30];
+   for(const no of buryOrder){ if(sorted.includes(no))return no; }
    return null;                                                                    // 残りは全て1-5 → 原則(絶対に埋めない)に従い、埋めずに見送る
   }
   // 非ユニット(余ったソウル等)を先に埋める。無ければユニットを埋めるが、
@@ -2477,6 +2488,66 @@ function aiDecide(pi,acts,timing){
        - 韋駄天丸(1)は「手札に2枚」or「既に盤面に1体」の時だけ(単体では弱いので2枚並べる)。
        - 最初のユニットは中央列(homeRow中央)、以降は相手ユニットのいない左右の列へ。
    ・プランは基本しない(相手が残6枚=瀕死の時だけフィニッシャーを掘る)。 */
+// ===== 【RED_AGGRO_V2】extraSac(追加コスト=自ユニット廃棄)除去の純交換評価 =====
+// #31 トロール流砲撃術: 赤1 + 自ユニット1体を廃棄 → 対象に6000ダメージ。
+// これを単体除去として「相手を消せる=得」と見ると、3500の自軍を捨てて1000の敵を消すような
+// 自分に対する2対1(自軍ユニット+スペル 対 敵1枚)を平気で行う。廃棄する自ユニットとスペル1枚を
+// 差し引いた「純交換」で価値を測る。弱い相手を強い自軍で消すのは強く負に評価される。
+function extraSacRank(u){ // 小さいほど「廃棄向き(惜しくない)」
+ if(FX[u.no]&&FX[u.no].eotGrave)return -1e6;           // 終了時消滅(レイザー等)は実質無償→最優先で廃棄
+ return effPow(u)-(u.dmg||0);                           // 残りHP: 小さい=既に瀕死=廃棄向き
+}
+function extraSacUnitVal(u){ // ユニット価値(中央特攻評価と同尺度: pow/2500 + sm*0.5)
+ if(FX[u.no]&&FX[u.no].eotGrave)return 0;               // どうせ消える→価値0(無償で廃棄可)
+ return effPow(u)/2500+(smVal(u)||0)*0.5;
+}
+// #31を対象targetUに撃つ時の純交換。{ok,sacU,net,expendable}
+function extraSacNet(pi,targetU){
+ const own=units().filter(x=>x.ctrl===pi);
+ if(!own.length)return {ok:false};                      // 廃棄できる自ユニットが無い=撃てない
+ const sacU=own.slice().sort((a,b)=>extraSacRank(a)-extraSacRank(b))[0]; // 実際の廃棄チューザと一致
+ const net=extraSacUnitVal(targetU)-extraSacUnitVal(sacU)-1.0; // 敵の価値 − 廃棄自軍 − スペル1枚
+ return {ok:true,sacU,net,expendable:!!(FX[sacU.no]&&FX[sacU.no].eotGrave)};
+}
+// #31を「今、価値をもって撃てる」なら廃棄予定ユニットを返す(=そのユニットは前進させない)。無ければnull。
+// 「撃つ価値」の判定は実際の評価(aiScoreのplayS #31)に一致させる: 純交換が正、または
+// 差し迫った脅威(リーサル圏)の除去。これにより「前進に移動エネを払って即廃棄」の無駄を確実に防ぐ。
+function aggroExtraSacPlan(pi){
+ const p=G.pl[pi];
+ if(!RED_AGGRO_V2||!p.hand.includes(31)||!canPay(p,parseCost(CARDS[31].play)))return null;
+ const c=(FX[31].tgt.cands(pi)||[]).filter(t=>t.u&&t.u.ctrl!==pi&&t.u.dmg+6000>=effPow(t.u));
+ if(!c.length)return null;
+ const tgt=c.sort((x,y)=>effPow(y.u)-effPow(x.u))[0].u;
+ const es=extraSacNet(pi,tgt);
+ if(!es.ok)return null;
+ let worth;
+ try{ worth=aiScore(pi,{t:"playS",no:31},"main")>0; }catch(e){ worth=es.net>0; }
+ return worth?es.sacU:null;
+}
+// ===== 【RED_AGGRO_V2】GENERAL リソース/テンポ評価(#31の特別扱いを置換) =====
+// R(pi)=手札 + 盤面自軍ユニット + エネ + スマッシュ(=advMetric)。各アクションを差分 D=R(me)−R(opp) への
+// 純効果で評価し、既存のライフ/リーサル/クロック目的と合成する。悪い交換(トロール-for-弱小/チャンプ特攻/
+// 過剰展開)は、カード枚数の一般計算から自然に負に落ちる(カード固有パッチを使わない)。
+// ユニットは基本1体=1。「1対1で受けにくい」ユニット(高パワー/先制加速=回避的)は二次的に僅かに>1。
+function unitHardToAnswer(u){
+ try{ return (effPow(u)-(u.dmg||0))>=5000 || hasAccel(u); }catch(e){ return false; }
+}
+// 除去/バーン系スペルの純リソース交換スコア(#31含むあらゆる除去に共通=カード固有ではない)。
+//   net = (相手ユニット除去 +1) − (追加コストで廃棄する自ユニット +1) − (スペル1枚 +1)
+// 例) #31が自ユニットを廃棄してマキリを消す = +1 −1 −1 = −1 → 撃たない(一般項から自然に負)。
+//     #29(廃棄なし)で1体除去 = +1 −0 −1 = 0(1対1) → 受けにくい/リーサル絡み以外は中立。
+// これに戦略ボーナス(差し迫った脅威=ライフ/クロック目的、受けにくさ、バトルでの自軍救出)を加える。
+function removalResScore(pi,a,tgt,ctx){
+ ctx=ctx||{};
+ const sac=(FX[a.no]&&FX[a.no].extraSac)?1:0;      // 追加コスト=自ユニット1体廃棄か(#31など)。カードのextraSacフラグで一般判定。
+ if(sac&&!units().some(x=>x.ctrl===pi))return -2;  // 廃棄する自ユニットが無い=撃てない
+ let s=1 - sac - 1;                                 // 純カード交換(基本は1体=1で数える) = −sac
+ const lethalThreat=isThreat(pi,tgt)&&(ctx.danger||ctx.lethalRisk);
+ if(lethalThreat)s+=2.5+(tgt.d.sm||0);             // 差し迫ったリーサル圏の脅威除去=ライフ/クロック目的で価値大
+ else if(unitHardToAnswer(tgt))s+=1.5;             // 受けにくい(1対1で返せない)ユニットは等価交換以上の価値
+ if(ctx.losing)s+=1;                               // バトル中: 撃たなければ負ける自ユニットを救う
+ return s;
+}
 function aggroPolicy(pi,acts,timing){
  const p=G.pl[pi], opp=G.pl[other(pi)], myTurn=G.ap===pi;
  const pass=acts.find(a=>a.t==="pass")||{t:"pass"};
@@ -2502,6 +2573,8 @@ function aggroPolicy(pi,acts,timing){
   //  エネ余裕があり倒せる敵ブロッカーが進路/敵陣にいれば踏んで割る。既に敵陣のユニットはそのまま殴る(戻さない=このターン殴るため)。
   const holdSoul=p.hand.includes(30)&&canPay(p,parseCost(CARDS[30].play));
   const pump=aggroMaxPump(p);
+  // #31を今ターン価値をもって撃つなら、その廃棄予定ユニットは前進させない(移動エネを払って前進→即廃棄の無駄防止)。
+  const plannedSac=aggroExtraSacPlan(pi);
   // 【オーナー追答B】敵陣にいるユニットの「戻る/留まる」判断(踏み込んだ後の位置決め):
   //  ・#30(ソウル)を握るなら敵陣に留まる(奥で+4000勝負=下の前進ループがholdSoulで敵陣狙いを継続)。
   //  ・そうでなく、中央に戻れば追撃ユニット(手札/プランのユニット)を並べて盤面を作れる(=board-buildingの余地)なら、
@@ -2515,6 +2588,7 @@ function aggroPolicy(pi,acts,timing){
                    ||(p.planUp&&p.deck.length&&CARDS[p.deck[p.deck.length-1]]&&CARDS[p.deck[p.deck.length-1]].type==="U");
    if(hasFollowup){
     for(const u of units().filter(u=>u.ctrl===pi&&!u.frozen&&(u.d.sm||0)>=1&&u.r===enemyRow&&u.d.move&&!deepAnchor(u.no))){
+     if(plannedSac&&u===plannedSac)continue; // #31で廃棄予定のユニットは動かさない
      const mv=acts.find(a=>a.t==="move"&&a.uid===u.uid);
      if(!mv)continue;
      const curC=Math.abs(u.r-2);
@@ -2528,6 +2602,7 @@ function aggroPolicy(pi,acts,timing){
    }
   }
   for(const u of units().filter(u=>u.ctrl===pi&&!u.frozen&&(u.d.sm||0)>=1&&u.r!==enemyRow)){
+   if(plannedSac&&u===plannedSac)continue; // #31で廃棄予定のユニットは前進させない(移動エネの無駄防止)
    const mv=acts.find(a=>a.t==="move"&&a.uid===u.uid);
    if(!mv)continue;
    const finisher=(FX[u.no]&&FX[u.no].haste)||lethalTurn;
@@ -2596,6 +2671,10 @@ function aggroPolicy(pi,acts,timing){
  }
  // (b) それ以外の手札ユニットは出さない。プラン作成/更新は瀕死時のみ。移動/詰め札を評価で最善手。
  let pool=acts.filter(a=>a.t!=="playU");
+ if(RED_AGGRO_V2){ // #31で今ターン廃棄予定の自ユニットは「前進(移動)」候補からも除外(移動エネを払って前進→即廃棄の無駄を防ぐ)。
+  const ps=aggroExtraSacPlan(pi);
+  if(ps)pool=pool.filter(a=>!(a.t==="move"&&a.uid===ps.uid));
+ }
  if(opp.smash.length<6)pool=pool.filter(a=>a.t!=="planMake"&&a.t!=="planUpdate");
  const best=scoreBest(pool.length?pool:[pass]);
  // 負け際(次の相手ターンに詰まされる見込み)で自分のターンにやることが無い(パス)なら、手を無駄にせず
@@ -2952,6 +3031,9 @@ function aiScore(pi,a,timing){
   // 詰め/防御必須の局面では応酬より今の展開を優先(ペナルティなし)
   if(!pushToClose&&!mustDefend&&breaksReserve(p,parseCost(d.play).total,hu))best-=hu.val;
   best-=handReservePenalty(p,a,pushToClose,mustDefend); // 手札1〜2枚残す
+  // 【一般リソース評価】プランからの展開は手札を消費しない(掘った1枚を無料で盤面化)=カードプラス(+1 to D)。
+  // 手札からの展開は盤面+1/手札−1でDは±0(テンポのみ、既存処理に委譲)。プラン展開を明示的に優遇する。
+  if(RED_AGGRO_V2&&a.plan)best+=1.0;
   return best;
  }
  if(a.t==="playB"){
@@ -2989,7 +3071,14 @@ function aiScore(pi,a,timing){
    if(fx.run===undefined)return 0;
    // ダメージ/除去/バフ/デバフの価値
    const DMGAMT={29:2000,33:3000,37:5000,31:6000,35:3000};
-   if(DMGAMT[a.no]&&theirs){const amt=DMGAMT[a.no];if(theirs.dmg+amt>=effPow(theirs))return a.no===31?4:5;return losing?2:0.3;}
+   if(DMGAMT[a.no]&&theirs){
+    if(RED_AGGRO_V2){ // 【一般リソース評価】バトル中の除去/バーンは純カード交換+自軍救出で判定(#31を特別扱いしない)
+     const kills=theirs.dmg+DMGAMT[a.no]>=effPow(theirs);
+     if(!kills)return losing?0:-1;                         // 倒せない=負けも止まらないなら撃たない
+     return removalResScore(pi,a,theirs,{danger,lethalRisk,losing}); // net=除去−廃棄−スペル(+脅威/救出)
+    }
+    const amt=DMGAMT[a.no];if(theirs.dmg+amt>=effPow(theirs))return a.no===31?4:5;return losing?2:0.3;
+   }
    if((a.no===32&&mine.d.col==="赤")||(a.no===72&&mine.d.col==="黒")||a.no===30)return losing?4.5:0.3;
    if(a.no===36)return (mine&&theirs&&effPow(mine)>effPow(theirs))?2.2:0.1;
    if(a.no===70)return (theirs&&theirs.dmg+effPow(mine)<effPow(theirs))?4.3:0.3;
@@ -3022,6 +3111,12 @@ function aiScore(pi,a,timing){
   if([29,33,37,31,32,149,191,197,35].includes(a.no)){ // バトル用カードをメインで撃つ
    const c=fx.tgt&&fx.tgt.cands(pi).filter(t=>t.u&&t.u.ctrl!==pi);
    const DMGAMT={29:2000,33:3000,37:5000,31:6000};
+   if(RED_AGGRO_V2&&DMGAMT[a.no]){ // 【一般リソース評価】除去/バーンは純カード交換で判定(#31の特別扱いを撤廃)
+    const kill=(c||[]).filter(t=>t.u.dmg+DMGAMT[a.no]>=effPow(t.u));
+    if(!kill.length)return -1;                                  // 何も倒せない→カード1枚に見合わない
+    const tgt=kill.sort((x,y)=>effPow(y.u)-effPow(x.u))[0].u;   // 倒せる中で最大の脅威を狙う
+    return removalResScore(pi,a,tgt,{danger,lethalRisk,losing:false}); // net=除去−廃棄−スペル(+脅威/受けにくさ)
+   }
    if(DMGAMT[a.no]&&c&&c.length){const big=c.sort((x,y)=>effPow(y.u)-effPow(x.u))[0];if(big.u.dmg+DMGAMT[a.no]>=effPow(big.u)&&isThreat(pi,big.u))return 3+(danger?2:0);}
    if(a.no===35){let sc=0;for(const r of [1,2,3]){let v=0;units().forEach(x=>{if(x.r===r)v+=(x.ctrl===pi?-1:1)*(x.dmg+3000>=effPow(x)?effPow(x)/1500+1:0);});sc=Math.max(sc,v);}if(sc>1.5)return 2.5+(danger?1.5:0);}
    if((a.no===191||a.no===197)&&c&&c.length)return 2.5;
@@ -6898,7 +6993,7 @@ EVALAI.on=true;
  function addBadge(){ try{
    if(document.getElementById("aiTestBadge")) return;
    const b=document.createElement("div"); b.id="aiTestBadge";
-   b.textContent="実験AIビルド: 新AI v12 (赤単リワーク)";
+   b.textContent="実験AIビルド: 新AI v13 (赤単・資源評価)";
    b.style.cssText="position:fixed;left:6px;bottom:6px;z-index:99999;background:#7a1030;color:#ffd7e2;font:11px/1.4 sans-serif;padding:3px 8px;border:1px solid #ff6b95;border-radius:6px;opacity:.85;pointer-events:none";
    (document.body||document.documentElement).appendChild(b);
  }catch(e){} }
