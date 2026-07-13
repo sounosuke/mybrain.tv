@@ -311,7 +311,7 @@ catch(e){ console.error("Firebase init 失敗:",e); }
 
 <script>
 "use strict";
-const GAME_VERSION="P3.19 AI-TEST (新AI v13 (赤単・資源評価)) — 実験ビルド";
+const GAME_VERSION="P3.19 AI-TEST (新AI v14 (赤単・除去評価)) — 実験ビルド";
 const KIFU_FMT=2; // 棋譜の記録フォーマット版(記録項目を増やしたら上げる。読込時に不一致なら警告)
 /* ============ カードデータ ============ */
 const CARDS={};
@@ -2528,23 +2528,54 @@ function aggroExtraSacPlan(pi){
 // R(pi)=手札 + 盤面自軍ユニット + エネ + スマッシュ(=advMetric)。各アクションを差分 D=R(me)−R(opp) への
 // 純効果で評価し、既存のライフ/リーサル/クロック目的と合成する。悪い交換(トロール-for-弱小/チャンプ特攻/
 // 過剰展開)は、カード枚数の一般計算から自然に負に落ちる(カード固有パッチを使わない)。
-// ユニットは基本1体=1。「1対1で受けにくい」ユニット(高パワー/先制加速=回避的)は二次的に僅かに>1。
-function unitHardToAnswer(u){
- try{ return (effPow(u)-(u.dmg||0))>=5000 || hasAccel(u); }catch(e){ return false; }
+// 除去は「何もしない(do-nothing)反実仮想」との比較で測る。鍵は対象が「戦闘で受けられるか(answerable)」。
+// 敵ユニットTの実効脅威力 = その最大攻撃力 = effPow(T) + 攻撃時の自己パンプ(#4/#12/#20 の onAttack)。
+// 静的パワーではなくこの攻撃時パワーで脅威/受けやすさを測る(ライトニング・スナイパー: 静的1000 → 攻撃時4000)。
+function threatAtkPow(T){
+ try{ return effPow(T)+((FX[T.no]&&FX[T.no].onAttack)||0); }catch(e){ try{ return effPow(T); }catch(_e){ return 0; } }
+}
+// Tは「戦闘で1対1で受けられる」か: 攻撃時パワーを上回る(パンプ込みの)自軍ブロッカーが盤面にいる、
+// または安く展開できる手札ユニットで討てるなら true。answerable なら除去は無駄(戦闘で受ける/相打つ)。
+// 加速(先制)を持つTは殴り返せない=受けにくいので、討ち勝てる=パワーで確実に上回る場合のみ answerable とする。
+function combatAnswerable(pi,tgt){
+ const bar=threatAtkPow(tgt), p=G.pl[pi];
+ let pump=0; try{ pump=aggroMaxPump(p); }catch(e){}
+ const beat=v=>hasAccel(tgt)?(v>bar):(v>=bar);           // 加速持ちは討ち勝ち(>)が必要、通常は相打ち(>=)で可
+ for(const u of units()){ if(u.ctrl!==pi||u===tgt)continue; try{ if(beat(effPow(u)+pump))return true; }catch(e){} }
+ for(const no of (p.hand||[])){ const d=CARDS[no]; if(!d||d.type!=="U")continue;
+  try{ if(canPay(p,parseCost(d.play))&&beat((d.pow||0)+pump))return true; }catch(e){} }
+ return false;
+}
+// unitHardToAnswer(u): 「戦闘で受けられない能動的な脅威」= 攻撃時パワーが自軍で受けられず、前進/スマッシュしてくる。
+// (旧: 静的パワー>=5000 という静的判定を、攻撃時パワー×answerability に置換)
+function unitHardToAnswer(pi,u){
+ try{
+  if(arguments.length<2){ u=pi; pi=other(u.ctrl); } // 後方互換(単一引数呼び=Tの相手視点)
+  const active=isThreat(pi,u)||(!!u.d.move&&(u.d.sm||0)>=1); // 中央/自陣にいる or 移動できるスマッシャー(=前進してくる)
+  return active && !combatAnswerable(pi,u);
+ }catch(e){ return false; }
 }
 // 除去/バーン系スペルの純リソース交換スコア(#31含むあらゆる除去に共通=カード固有ではない)。
-//   net = (相手ユニット除去 +1) − (追加コストで廃棄する自ユニット +1) − (スペル1枚 +1)
-// 例) #31が自ユニットを廃棄してマキリを消す = +1 −1 −1 = −1 → 撃たない(一般項から自然に負)。
-//     #29(廃棄なし)で1体除去 = +1 −0 −1 = 0(1対1) → 受けにくい/リーサル絡み以外は中立。
-// これに戦略ボーナス(差し迫った脅威=ライフ/クロック目的、受けにくさ、バトルでの自軍救出)を加える。
+// do-nothing 反実仮想との比較:
+//   base = (相手ユニット除去 +1) − (スペル1枚 −1) − (追加コストで廃棄する自ユニット価値; 消耗品=500/終了時消滅は≈0に割引)
+//   ・対象が answerable(1対1で戦闘で受けられる) → 追加なし。sac付き除去は負のまま(戦闘で受ける)、バーンは中立(≈0)。
+//     例) #31で自軍を捨ててマキリを消す(フンガが受けられる) → 負 → 撃たない。
+//   ・対象が unanswerable な能動的脅威(攻撃時パワーで自軍が受けられず前進/殴ってくる) → 何もしなければ
+//     受けられない攻撃で自軍1体を失い(戻せない)+その分殴られる。この「回避損失(~1.5〜2)」を加点 → 撃つ。
+//     例) スナイパー(攻撃時4000, 全ブロッカーが負ける) → #31で500を捨てて除去が正当化される。
+//   ・差し迫ったリーサル圏の脅威 → 従来通りライフ/クロック目的で大きく加点。
 function removalResScore(pi,a,tgt,ctx){
  ctx=ctx||{};
  const sac=(FX[a.no]&&FX[a.no].extraSac)?1:0;      // 追加コスト=自ユニット1体廃棄か(#31など)。カードのextraSacフラグで一般判定。
  if(sac&&!units().some(x=>x.ctrl===pi))return -2;  // 廃棄する自ユニットが無い=撃てない
- let s=1 - sac - 1;                                 // 純カード交換(基本は1体=1で数える) = −sac
+ let sacVal=0;                                      // 廃棄する自ユニットの価値(消耗品はほぼ0に割引)
+ if(sac){ let es; try{ es=extraSacNet(pi,tgt); }catch(e){} sacVal=(es&&es.ok)?Math.max(0,extraSacUnitVal(es.sacU)):1; }
+ let s=1 - 1 - sacVal;                              // 純カード交換 = 除去(+1) − スペル(−1) − 廃棄自軍
  const lethalThreat=isThreat(pi,tgt)&&(ctx.danger||ctx.lethalRisk);
- if(lethalThreat)s+=2.5+(tgt.d.sm||0);             // 差し迫ったリーサル圏の脅威除去=ライフ/クロック目的で価値大
- else if(unitHardToAnswer(tgt))s+=1.5;             // 受けにくい(1対1で返せない)ユニットは等価交換以上の価値
+ if(lethalThreat){ s+=2.5+(tgt.d.sm||0); }         // 差し迫ったリーサル圏の脅威除去=ライフ/クロック目的で価値大
+ else if(unitHardToAnswer(pi,tgt)){                 // do-nothing 反実仮想: 受けられない能動的脅威を放置する損失を加点
+  s+=1.5+Math.min(smVal(tgt)||0,2)*0.5;            // 回避損失 ≈ 失う自軍1体 + そのスマッシュ出力(~1.5〜2)
+ }
  if(ctx.losing)s+=1;                               // バトル中: 撃たなければ負ける自ユニットを救う
  return s;
 }
@@ -6993,7 +7024,7 @@ EVALAI.on=true;
  function addBadge(){ try{
    if(document.getElementById("aiTestBadge")) return;
    const b=document.createElement("div"); b.id="aiTestBadge";
-   b.textContent="実験AIビルド: 新AI v13 (赤単・資源評価)";
+   b.textContent="実験AIビルド: 新AI v14 (赤単・除去評価)";
    b.style.cssText="position:fixed;left:6px;bottom:6px;z-index:99999;background:#7a1030;color:#ffd7e2;font:11px/1.4 sans-serif;padding:3px 8px;border:1px solid #ff6b95;border-radius:6px;opacity:.85;pointer-events:none";
    (document.body||document.documentElement).appendChild(b);
  }catch(e){} }
