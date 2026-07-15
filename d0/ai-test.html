@@ -311,7 +311,7 @@ catch(e){ console.error("Firebase init 失敗:",e); }
 
 <script>
 "use strict";
-const GAME_VERSION="P3.19 AI-TEST (新AI v18 (赤単・スタック認識)) — 実験ビルド";
+const GAME_VERSION="P3.19 AI-TEST (新AI v19 (赤単・主砲展開)) — 実験ビルド";
 const KIFU_FMT=2; // 棋譜の記録フォーマット版(記録項目を増やしたら上げる。読込時に不一致なら警告)
 /* ============ カードデータ ============ */
 const CARDS={};
@@ -2171,14 +2171,18 @@ function aiEnergyChoice(p){
   // V2: 「移動コスト1 かつ 使用コスト<=2」の軽量主砲(=カード1/2/3/4/5)のみ厳密に温存する。
   const isCheapSmasher=no=>CARDS[no].type==="U"&&(CARDS[no].sm||0)>=1&&totalCost(no)<=3;
   const isLightAttacker=no=>CARDS[no].type==="U"&&!!CARDS[no].move&&parseCost(CARDS[no].move).total<=1&&totalCost(no)<=2;
+  // 【設計点追加】主力threat(高パワー/SM2/エリア補正/勝利時スプレッド=タンネピコロ11/フンガ8/ボンガ17等)は展開すべき勝ち筋。
+  //  1枚は必ず温存し、余剰コピーのみ埋める(=主砲を全部エネに埋めて盤面が弱くなる事故を防ぐ)。
+  const isPremiumAttacker=no=>{const d=CARDS[no];return d.type==="U"&&((d.pow||0)>=3000||(d.sm||0)>=2||(FX[no]&&(FX[no].statSelf||FX[no].onWin)));};
   if(energyN>=(RED_AGGRO_V2?6:4))return null;                   // V2: 最低6エネまでチャージ(オーナー指摘)。OFF: 旧4で停止
   const cnt={};p.hand.forEach(x=>cnt[x]=(cnt[x]||0)+1);
   const SOUL=30;                                                // チャレンジャー・ソウル: 手札に抱えるのは2枚まで。3枚目以降はエネへ。
   // 速攻(レイザー/ブラスト)は詰めの切り札で手札1体あれば十分 → 余剰(2体目以降)は埋めてよい。
-  let keptHaste=false, keptSoul=0, kept29=0, kept31=0;
+  let keptHaste=false, keptSoul=0, kept29=0, kept31=0; const keptPrem={};
   const buriable=sorted.filter(no=>{
    if(RED_AGGRO_V2){
     if(isLightAttacker(no))return false;                        // V2: 軽量主砲(1-5)は速攻/重複でも絶対に埋めない(最優先で握る)
+    if(isPremiumAttacker(no)){ if(keptPrem[no])return true; keptPrem[no]=1; return false; } // 主力threatは1枚温存(展開用)、余剰コピーのみ埋める
     if(FX[no]&&FX[no].haste){ if(keptHaste)return true; keptHaste=true; return false; } // 速攻(#9等)は1体温存、余りは埋める
     if(no===SOUL){ if(keptSoul>=2)return true; keptSoul++; return false; }               // #30(ソウル)は2枚まで温存、3枚目以降は埋める
     if(no===29){ if(kept29>=1)return true; kept29++; return false; } // 【charge保護】#29(シャイニング・ダーツ)は最低1枚温存
@@ -2205,7 +2209,7 @@ function aiEnergyChoice(p){
    const REACT=new Set([29,31,30]);
    const forcedNonU2=sorted.filter(no=>CARDS[no].type!=="U"&&!REACT.has(no));      // 反応スペル以外の非ユニット
    if(forcedNonU2.length)return forcedNonU2.sort((a,b)=>totalCost(a)-totalCost(b))[0];
-   const forcedU2=sorted.filter(no=>CARDS[no].type==="U"&&!isLightAttacker(no));  // 1-5以外のユニット(速攻#9/重量#38等)
+   const forcedU2=sorted.filter(no=>CARDS[no].type==="U"&&!isLightAttacker(no)&&!isPremiumAttacker(no));  // 1-5と主力threat(タンネピコロ/フンガ/ボンガ)以外のユニット(速攻#9等)のみ=主砲は埋めない
    if(forcedU2.length)return forcedU2.slice().sort((a,b)=>(CARDS[a].pow+(CARDS[a].sm||0)*1500)-(CARDS[b].pow+(CARDS[b].sm||0)*1500))[0];
    // 反応スペルを埋める順: KEEP優先度は #30 > #31 > #29 なので #29→#31→#30 の順に埋める。
    //  ただし対アグロ(ウィニー)は #29(ダーツ)を確保するため #31→#30→#29 の順(#29を最後まで残す)。
@@ -2891,8 +2895,16 @@ function aggroPickDeploy(pi,acts){
   return true;
  });
  if(!ok.length)return null;
- // 出す順: 安いスマッシャーから(2コスト以下優先、SM持ち優先)
- ok.sort((a,b)=> totalCost(a.no)-totalCost(b.no) || ((CARDS[b.no].sm||0)-(CARDS[a.no].sm||0)) );
+ // 出す順:
+ if(RED_AGGRO_V2){
+  // 【設計点】硬いクロック(対処しにくい=1対1されにくい)を優先展開。エリア補正(マキリ/タンネピコロ)/SM2(ボンガ)/高パワー/勝利時スプレッド(フンガ)を主砲として先に出す。
+  //  安い小駒(素の500-2000)より、勝ち筋になる主砲を盤面に。 legalActionsは払えるプレイのみなので"払える最大の脅威"を選ぶことになる。
+  const tv=no=>{const d=CARDS[no];return (d.pow||0)+((d.sm||0)*2000)+((FX[no]&&FX[no].statSelf)?2000:0)+((FX[no]&&FX[no].onWin)?1500:0);};
+  ok.sort((a,b)=> tv(b.no)-tv(a.no) || (totalCost(b.no)-totalCost(a.no)) );
+ } else {
+  // 旧: 安いスマッシャーから(2コスト以下優先、SM持ち優先)
+  ok.sort((a,b)=> totalCost(a.no)-totalCost(b.no) || ((CARDS[b.no].sm||0)-(CARDS[a.no].sm||0)) );
+ }
  // 安全に置ける(負けチャンプにならない)最初のユニットを配置。全て負けチャンプなら展開しない(温存)。
  for(const chosen of ok){ const sq=aggroPlace(pi,chosen); if(sq){ chosen.sq=sq; return chosen; } }
  return null;
@@ -7240,7 +7252,7 @@ EVALAI.on=true;
  function addBadge(){ try{
    if(document.getElementById("aiTestBadge")) return;
    const b=document.createElement("div"); b.id="aiTestBadge";
-   b.textContent="実験AIビルド: 新AI v18 (赤単・スタック認識)";
+   b.textContent="実験AIビルド: 新AI v19 (赤単・主砲展開)";
    b.style.cssText="position:fixed;left:6px;bottom:6px;z-index:99999;background:#7a1030;color:#ffd7e2;font:11px/1.4 sans-serif;padding:3px 8px;border:1px solid #ff6b95;border-radius:6px;opacity:.85;pointer-events:none";
    (document.body||document.documentElement).appendChild(b);
  }catch(e){} }
